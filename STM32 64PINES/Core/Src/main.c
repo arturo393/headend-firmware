@@ -93,7 +93,6 @@ UART_HandleTypeDef huart2;
 #define UPLINK_OBJECT_NAME "x13\0"
 #define DOWNLINK_OBJECT_NAME "x12\0"
 
-uint16_t adc_values[7];
 int DC_4, DC_3, DC_2, DC_1;
 int ART_4;
 int ART_3;
@@ -144,8 +143,7 @@ typedef enum {
 	UPLINK_LEVEL,
 	ARTERIAL3_CURRENT,
 	ARTERIAL2_CURRENT,
-	ARTERIAL_CURRENT_1,
-
+	ADC_CHANNELS
 } ADC_CHANNEL_T;
 
 typedef struct ARTERIAL {
@@ -187,27 +185,28 @@ uint8_t uart1RxData[BUTTON_DATA_SIZE];
 uint8_t Cmd_End[3] = { 0xff, 0xff, 0xff };
 bool sendData = false;
 
+uint16_t adcValues[ADC_CHANNELS];
+
 void sendNumToNextion(char *obj, int32_t num) {
-	uint8_t *buffer = malloc(30 * sizeof(char));
+	uint8_t buffer[30] = { 0 };
 	int len = sprintf((char*) buffer, "%s.val=%ld", obj, num);
 	HAL_UART_Transmit(&huart1, buffer, len, 1000);
 	HAL_UART_Transmit(&huart1, Cmd_End, 3, 100);
-	free(buffer);
 }
 
 void sendFloatToNextion(char *obj, float num, int dp) {
 	// convert to the integer
+	uint8_t len = 0;
 	int32_t number = num * (pow(10, dp));
-
-	uint8_t *buffer = malloc(30 * sizeof(char));
-	int len = sprintf((char*) buffer, "%s.vvs1=%d", obj, dp);
-	HAL_UART_Transmit(&huart1, buffer, len, 1000);
-	HAL_UART_Transmit(&huart1, Cmd_End, 3, 100);
-
+	HAL_StatusTypeDef res;
+	uint8_t buffer[30] = { 0 };
+	len = sprintf((char*) buffer, "%s.vvs1=%d", obj, dp);
+	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 	len = sprintf((char*) buffer, "%s.val=%ld", obj, number);
-	HAL_UART_Transmit(&huart1, buffer, len, 1000);
-	HAL_UART_Transmit(&huart1, Cmd_End, 3, 100);
-	free(buffer);
+	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
+
 }
 
 void sendArterialToNextion(Arterial arterial) {
@@ -220,7 +219,7 @@ void sendArterialToNextion(Arterial arterial) {
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	if ((uart1RxData[START] == *START_RX_DATA)
-			&& (uart1RxData[END] ==  *END_RX_DATA)) {
+			&& (uart1RxData[END] == *END_RX_DATA)) {
 		for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
 			if (uart1RxData[CMD] == arterial[i].dcOnObjectID)
 				arterialIOs[i].dcOn = uart1RxData[VALUE];
@@ -250,6 +249,63 @@ uint8_t RxData = 0;
 int32_t num = 1;
 float value = 1.1;
 
+void arterialInit(Arterial arterial[ARTERIAL_NUMBER],
+		ArterialIO arterialIOs[ARTERIAL_NUMBER]) {
+	const char *voltageObjectNames[ARTERIAL_NUMBER] = {
+	ARTERIAL1_VOLTAGE_OBJECT_NAME, ARTERIAL2_VOLTAGE_OBJECT_NAME,
+	ARTERIAL3_VOLTAGE_OBJECT_NAME, ARTERIAL4_VOLTAGE_OBJECT_NAME };
+	const char *currentObjectNames[ARTERIAL_NUMBER] = {
+	ARTERIAL1_CURRENT_OBJECT_NAME, ARTERIAL2_CURRENT_OBJECT_NAME,
+	ARTERIAL3_CURRENT_OBJECT_NAME, ARTERIAL4_CURRENT_OBJECT_NAME };
+	const char *powerObjectNames[ARTERIAL_NUMBER] = {
+	ARTERIAL1_POWER_OBJECT_NAME, ARTERIAL2_POWER_OBJECT_NAME,
+	ARTERIAL3_POWER_OBJECT_NAME, ARTERIAL4_POWER_OBJECT_NAME };
+	const char *dcOnObjectNames[ARTERIAL_NUMBER] = {
+	ARTERIAL1_DC_ON_OBJECT_NAME, ARTERIAL2_DC_ON_OBJECT_NAME,
+	ARTERIAL3_DC_ON_OBJECT_NAME, ARTERIAL4_DC_ON_OBJECT_NAME };
+	const char *rfOnObjectNames[ARTERIAL_NUMBER] = {
+	ARTERIAL1_RF_ON_OBJECT_NAME, ARTERIAL2_RF_ON_OBJECT_NAME,
+	ARTERIAL3_RF_ON_OBJECT_NAME, ARTERIAL4_RF_ON_OBJECT_NAME };
+	const int dcObjectIDs[ARTERIAL_NUMBER] = { ARTERIAL1_DC_ON_OBJECT_ID,
+	ARTERIAL2_DC_ON_OBJECT_ID, ARTERIAL3_DC_ON_OBJECT_ID,
+	ARTERIAL4_DC_ON_OBJECT_ID };
+	const int rfObjectIDs[ARTERIAL_NUMBER] = { ARTERIAL1_RF_ON_OBJECT_ID,
+	ARTERIAL2_RF_ON_OBJECT_ID, ARTERIAL3_RF_ON_OBJECT_ID,
+	ARTERIAL4_RF_ON_OBJECT_ID };
+	for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
+		sprintf(arterial[i].voltageObjectName, voltageObjectNames[i]);
+		sprintf(arterial[i].currentObjectName, currentObjectNames[i]);
+		sprintf(arterial[i].powerObjectName, powerObjectNames[i]);
+		sprintf(arterial[i].dcOnObjectName, dcOnObjectNames[i]);
+		sprintf(arterial[i].rfOnObjectName, rfOnObjectNames[i]);
+		arterial[i].dcOnObjectID = dcObjectIDs[i];
+		arterial[i].rfOnObjectID = rfObjectIDs[i];
+		arterialIOs[i].dcOn = false;
+		arterialIOs[i].rfOn = false;
+	}
+}
+
+void TIM2_IRQHandler(void) {
+	if (TIM2->SR & TIM_SR_UIF) {
+		TIM2->SR &= ~TIM_SR_UIF;  // Clear the update interrupt flag
+		sendData = true;
+
+	}
+}
+
+void TIM2_Interrupt_Init(void) {
+	NVIC_SetPriority(TIM2_IRQn, 0);  // Set the interrupt priority
+	NVIC_EnableIRQ(TIM2_IRQn);  // Enable the interrupt
+}
+
+void startTimer2(void) {
+	TIM2->CR1 |= TIM_CR1_CEN;  // Start the timer
+}
+
+void enableGlobalInterrupts(void) {
+	__enable_irq();
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -258,7 +314,7 @@ float value = 1.1;
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-
+	HAL_StatusTypeDef res;
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -281,104 +337,83 @@ int main(void) {
 	MX_GPIO_Init();
 	MX_DMA_Init();
 	MX_ADC_Init();
-
 	MX_I2C2_Init();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_StatusTypeDef res;
-	res = HAL_ADC_Start_DMA(&hadc, (uint32_t*) adc_values, 7);
+
+	// Enable the timer clock
+	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+
+	// Configure the timer
+	TIM2->PSC = 7999; // Prescaler value for a 1 ms time base (assuming a 48 MHz clock)
+	TIM2->ARR = 499;  // Auto-reload value for a 500 ms period
+	TIM2->ARR = 3999;  // Auto-reload value for a 500 ms period
+	TIM2->CR1 |= TIM_CR1_ARPE;  // Enable auto-reload preload
+	TIM2->CR1 |= TIM_CR1_URS; // Only overflow/underflow generates an update interrupt
+	TIM2->DIER |= TIM_DIER_UIE;  // Enable update interrupt
+
+	// Initialize necessary peripherals and configurations
+	TIM2_Interrupt_Init();
+	enableGlobalInterrupts();
+
+	res = HAL_ADC_Start_DMA(&hadc, (uint32_t*) adcValues, ADC_CHANNELS);
 	if (res != HAL_OK)
 		Error_Handler();
 
-	HAL_UART_Receive_IT(&huart1, uart1RxData, BUTTON_DATA_SIZE);
-	//HAL_UART_Receive_IT(&huart1, &RxData, 1);
+	res = HAL_UART_Receive_IT(&huart1, uart1RxData, BUTTON_DATA_SIZE);
+	if (res != HAL_OK)
+		Error_Handler();
+
 	uint32_t nextionSendTicks = HAL_GetTick();
 	uint32_t nextionSendTimeout = 1000;
 
-	const char *voltageObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_VOLTAGE_OBJECT_NAME,
-	ARTERIAL2_VOLTAGE_OBJECT_NAME, ARTERIAL3_VOLTAGE_OBJECT_NAME,
-	ARTERIAL4_VOLTAGE_OBJECT_NAME };
-	const char *currentObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_CURRENT_OBJECT_NAME,
-	ARTERIAL2_CURRENT_OBJECT_NAME, ARTERIAL3_CURRENT_OBJECT_NAME,
-	ARTERIAL4_CURRENT_OBJECT_NAME };
-	const char *powerObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_POWER_OBJECT_NAME,
-	ARTERIAL2_POWER_OBJECT_NAME, ARTERIAL3_POWER_OBJECT_NAME,
-	ARTERIAL4_POWER_OBJECT_NAME };
-	const char *dcOnObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_DC_ON_OBJECT_NAME,
-	ARTERIAL2_DC_ON_OBJECT_NAME, ARTERIAL3_DC_ON_OBJECT_NAME,
-	ARTERIAL4_DC_ON_OBJECT_NAME };
-	const char *rfOnObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_RF_ON_OBJECT_NAME,
-	ARTERIAL2_RF_ON_OBJECT_NAME, ARTERIAL3_RF_ON_OBJECT_NAME,
-	ARTERIAL4_RF_ON_OBJECT_NAME };
-	const int dcObjectIDs[ARTERIAL_NUMBER] = { ARTERIAL1_DC_ON_OBJECT_ID,
-	ARTERIAL2_DC_ON_OBJECT_ID, ARTERIAL3_DC_ON_OBJECT_ID,
-	ARTERIAL4_DC_ON_OBJECT_ID };
-	const int rfObjectIDs[ARTERIAL_NUMBER] = { ARTERIAL1_RF_ON_OBJECT_ID,
-	ARTERIAL2_RF_ON_OBJECT_ID, ARTERIAL3_RF_ON_OBJECT_ID,
-	ARTERIAL4_RF_ON_OBJECT_ID };
+	arterialInit(arterial, arterialIOs);
+	startTimer2();
 
-	for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
-		sprintf(arterial[i].voltageObjectName, voltageObjectNames[i]);
-		sprintf(arterial[i].currentObjectName, currentObjectNames[i]);
-		sprintf(arterial[i].powerObjectName, powerObjectNames[i]);
-		sprintf(arterial[i].dcOnObjectName, dcOnObjectNames[i]);
-		sprintf(arterial[i].rfOnObjectName, rfOnObjectNames[i]);
-		arterial[i].dcOnObjectID = dcObjectIDs[i];
-		arterial[i].rfOnObjectID = rfObjectIDs[i];
-		arterialIOs[i].dcOn = false;
-		arterialIOs[i].rfOn = false;
-	}
-
+	srand(10000);
 	// ...
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
-		/* NEXTION_SendFloat("x0", 12.21, 2);
-		 NEXTION_SendFloat("x1", 55.52, 2);
-		 NEXTION_SendFloat("x2", 37.59, 2);
-		 NEXTION_SendFloat("x3", 10.50, 2);
-		 NEXTION_SendFloat("x4", 41.69, 2);
-		 NEXTION_SendFloat("x5", 66.99, 2);
-		 NEXTION_SendFloat("x6", 21.96, 2);
-		 NEXTION_SendFloat("x7", 32.00, 2);
-
-		 HAL_Delay (1000);*/
 
 		for (int i = 0; i < ARTERIAL_NUMBER; i++) {
+
 			HAL_GPIO_WritePin(arterialIOs[i].dcPort, arterialIOs[i].dcPin,
 					arterialIOs[i].dcOn);
 			HAL_GPIO_WritePin(arterialIOs[i].rfPort, arterialIOs[i].rfPin,
 					arterialIOs[i].rfOn);
 
 			if (arterialIOs[i].dcOn) {
-				arterial[i].voltage = adc_values[VOLTAGE] * ADC_VOLTAGE_FACTOR;
-				arterial[ARTERIAL_4].current = adc_values[ARTERIAL4_CURRENT]
+				arterial[i].voltage = adcValues[VOLTAGE] * ADC_VOLTAGE_FACTOR;
+				arterial[ARTERIAL_4].current = adcValues[ARTERIAL4_CURRENT]
 						* ADC_CONSUMPTION_CURRENT_FACTOR;	//VARIABLE ANALOGA
-				arterial[ARTERIAL_3].current = adc_values[BUTTON_DATA_SIZE]
+				arterial[ARTERIAL_3].current = adcValues[BUTTON_DATA_SIZE]
 						* ADC_CONSUMPTION_CURRENT_FACTOR;	//VARIABLE ANALOGA
-				arterial[ARTERIAL_2].current = adc_values[ARTERIAL2_CURRENT]
+				arterial[ARTERIAL_2].current = adcValues[ARTERIAL2_CURRENT]
 						* ADC_CONSUMPTION_CURRENT_FACTOR;	//VARIABLE ANALOGA
-				arterial[ARTERIAL_1].current = adc_values[ARTERIAL1_CURRENT]
+				arterial[ARTERIAL_1].current = adcValues[ARTERIAL1_CURRENT]
 						* ADC_CONSUMPTION_CURRENT_FACTOR;	//VARIABLE ANALOGA
-				downlinkLevel = adc_values[DOWNLINK_LEVEL];	//VARIABLE ANALOGA
-				uplinkLevel = adc_values[UPLINK_LEVEL];		//VARIABLE ANALOGA
+				downlinkLevel = adcValues[DOWNLINK_LEVEL];	//VARIABLE ANALOGA
+				uplinkLevel = adcValues[UPLINK_LEVEL];		//VARIABLE ANALOGA
 				arterial[i].power = arterial[i].voltage * arterial[i].current;
 			} else {
-				arterial[i].voltage = (HAL_GetTick() % 48);
-				arterial[i].current = (HAL_GetTick() % 5);
+				arterial[i].voltage = (rand() % 48);
+				arterial[i].current = (rand() % 5);
 				arterial[i].power = arterial[i].voltage * arterial[i].current;
-				downlinkLevel = HAL_GetTick() % 45;	//VARIABLE ANALOGA
-				uplinkLevel = HAL_GetTick() % 45;	//VARIABLE ANALOGA
+				downlinkLevel = rand() % 45;	//VARIABLE ANALOGA
+				uplinkLevel = rand() % 45;	//VARIABLE ANALOGA
 			}
+		}
 
+		if (sendData) {
+			sendData = false;
+			for (int i = 0; i < ARTERIAL_NUMBER; i++)
+				sendArterialToNextion(arterial[i]);
+			sendFloatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 2);
+			sendFloatToNextion(UPLINK_OBJECT_NAME, uplinkLevel, 2);
 		}
 
 		alarm1 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8);	//ESTADO ALARM1
@@ -387,15 +422,6 @@ int main(void) {
 		alarm4 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_11);	//ESTADO ALARM4
 		alarm5 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_12);	//ESTADO ALARM5
 
-		if (sendData || ((HAL_GetTick() - nextionSendTicks) > nextionSendTimeout) ) {
-			sendData = false;
-			for (int i = 0; i < ARTERIAL_NUMBER; i++)
-				sendArterialToNextion(arterial[i]);
-			sendFloatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 2);
-			sendFloatToNextion(UPLINK_OBJECT_NAME, uplinkLevel, 2);
-			HAL_UART_Receive_IT(&huart1, uart1RxData, BUTTON_DATA_SIZE);
-			nextionSendTicks = HAL_GetTick();
-		}
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
@@ -415,9 +441,12 @@ void SystemClock_Config(void) {
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI
+			| RCC_OSCILLATORTYPE_HSI14;
 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.HSI14CalibrationValue = 16;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
@@ -461,7 +490,7 @@ static void MX_ADC_Init(void) {
 	/** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
 	 */
 	hadc.Instance = ADC1;
-	hadc.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
+	hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
 	hadc.Init.Resolution = ADC_RESOLUTION_12B;
 	hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
 	hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
@@ -594,7 +623,7 @@ static void MX_USART1_UART_Init(void) {
 
 	/* USER CODE END USART1_Init 1 */
 	huart1.Instance = USART1;
-	huart1.Init.BaudRate = 9600;
+	huart1.Init.BaudRate = 115200;
 	huart1.Init.WordLength = UART_WORDLENGTH_8B;
 	huart1.Init.StopBits = UART_STOPBITS_1;
 	huart1.Init.Parity = UART_PARITY_NONE;
