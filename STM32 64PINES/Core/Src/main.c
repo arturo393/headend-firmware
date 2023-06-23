@@ -25,6 +25,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "stdbool.h"
+#include <limits.h>
 
 static const char *END_RX_DATA = "&";
 static const char *START_RX_DATA = "$";
@@ -78,9 +79,7 @@ static void MX_IWDG_Init(void);
 #define ADC_LINE_CURRENT_FACTOR  0.0010989f
 #define ADC_VOLTAGE_FACTOR  0.01387755f
 #define ARTERIAL1_VOLTAGE_OBJECT_NAME "x0\0"
-#define ARTERIAL1_48V_OBJECT_NAME "t4\0"
-#define ARTERIAL1_24V_OBJECT_NAME "t5\0"
-#define ARTERIAL1_12V_OBJECT_NAME "t6\0"
+
 #define ARTERIAL1_CURRENT_OBJECT_NAME "x1\0"
 #define ARTERIAL1_CURRENT_BAR_NAME "j0\0"
 #define ARTERIAL1_POWER_OBJECT_NAME "x2\0"
@@ -91,9 +90,6 @@ static void MX_IWDG_Init(void);
 #define ARTERIAL1_CURRENT_OBJECT_ID 4
 
 #define ARTERIAL2_VOLTAGE_OBJECT_NAME "x5\0"
-#define ARTERIAL2_48V_OBJECT_NAME "t7\0"
-#define ARTERIAL2_24V_OBJECT_NAME "t8\0"
-#define ARTERIAL2_12V_OBJECT_NAME "t9\0"
 #define ARTERIAL2_CURRENT_OBJECT_NAME "x4\0"
 #define ARTERIAL2_CURRENT_BAR_NAME "j1\0"
 #define ARTERIAL2_POWER_OBJECT_NAME "x3\0"
@@ -104,9 +100,6 @@ static void MX_IWDG_Init(void);
 #define ARTERIAL2_CURRENT_OBJECT_ID 6
 
 #define ARTERIAL3_VOLTAGE_OBJECT_NAME "x8\0"
-#define ARTERIAL3_48V_OBJECT_NAME "t10\0"
-#define ARTERIAL3_24V_OBJECT_NAME "t11\0"
-#define ARTERIAL3_12V_OBJECT_NAME "t12\0"
 #define ARTERIAL3_CURRENT_OBJECT_NAME "x7\0"
 #define ARTERIAL3_CURRENT_BAR_NAME "j2\0"
 #define ARTERIAL3_POWER_OBJECT_NAME "x6\0"
@@ -117,9 +110,6 @@ static void MX_IWDG_Init(void);
 #define ARTERIAL3_CURRENT_OBJECT_ID 7
 
 #define ARTERIAL4_VOLTAGE_OBJECT_NAME "x11\0"
-#define ARTERIAL4_48V_OBJECT_NAME "t13\0"
-#define ARTERIAL4_24V_OBJECT_NAME "t14\0"
-#define ARTERIAL4_12V_OBJECT_NAME "t15\0"
 #define ARTERIAL4_CURRENT_OBJECT_NAME "x10\0"
 #define ARTERIAL4_CURRENT_BAR_NAME "j3\0"
 #define ARTERIAL4_POWER_OBJECT_NAME "x9\0"
@@ -129,6 +119,9 @@ static void MX_IWDG_Init(void);
 #define ARTERIAL4_RF_ON_OBJECT_ID 16
 #define ARTERIAL4_CURRENT_OBJECT_ID 8
 
+#define ARTERIAL_48V_OBJECT_NAME "t4\0"
+#define ARTERIAL_24V_OBJECT_NAME "t5\0"
+#define ARTERIAL_12V_OBJECT_NAME "t6\0"
 #define UPLINK_OBJECT_NAME "x13\0"
 #define DOWNLINK_OBJECT_NAME "x12\0"
 
@@ -146,42 +139,66 @@ static void MX_IWDG_Init(void);
 #define QUERY_SIZE_DATA
 #define UART2_RX_BUFFLEN 30
 
-#define ADC_MIN_VALUE 0
-#define ADC_MAX_VALUE 4095
-#define VOLTAGE_MIN 0
-#define VOLTAGE_MAX 48
+#define ADC_MIN_VALUE 865
+#define ADC_MAX_VALUE 1795
+#define VOLTAGE_MIN 11.68
+#define VOLTAGE_MAX 23.27
 #define DOWNLINK_LEVEL_MIN -45
+
+#define ADC_CURRENT_MIN_VALUE_old 830
+#define ADC_CURRENT_MAX_VALUE_old 3442
+#define CURRENT_MIN_VALUE_old 0.180
+#define CURRENT_MAX_VALUE_old 0.73
+
+#define ADC_CURRENT_MIN_VALUE 418
+#define ADC_CURRENT_MAX_VALUE 2866
+#define CURRENT_MIN_VALUE 0.2
+#define CURRENT_MAX_VALUE 1.22
 
 #define DOWNLINK_LEVEL_MAX 5
 #define UPLINK_LEVEL_MIN -45
 #define UPLINK_LEVEL_MAX 0
 
-#define ART1_THRESHOLD 1000
-#define ART2_THRESHOLD 3212
-#define ART3_THRESHOLD 3212
-#define ART4_THRESHOLD 3212
+#define ART1_THRESHOLD 2244
+#define ART2_THRESHOLD 2244
+#define ART3_THRESHOLD 2244
+#define ART4_THRESHOLD 2244
 #define VOLT_THRESHOLD 1232
-#define DOWNLINK_THRESHOLD 1823
+#define DOWNLINK_THRESHOLD 500
 #define UPLINK_THRESHOLD 100
 
 #define VOLTAGE_THRESHOLD_5V 500
-#define VOLTAGE_THRESHOLD_12V 1200
-#define VOLTAGE_THRESHOLD_23V 2000
-#define VOLTAGE_THRESHOLD_36V 3000
+#define VOLTAGE_THRESHOLD_18V 1330
+#define VOLTAGE_THRESHOLD_36V 2740
 
-#define RED_BACKGROUND 63488
-#define WHITE_BACKGROUND 65535
+#define RED_C 63488
+#define WHITE_C 65535
 #define GREEN_BACKGROUND 1024
 #define GREEN_DARK_BACKGROUND 480
 #define GREY_BACKGROUND 50712
+#define ORANGE_C 64128
+#define GREY_C 21162
+#define BLACK_C 0
+
+#define ADC_WINDOW_SIZE 100
+
+typedef enum {
+	VIN_12V, VIN_24V, VIN_48V, VIN_UNKNOW
+} VOLTAGE_STATE_T;
 
 int uplinkLevel;
 int downlinkLevel;
-bool voltageAlarm = false;
-bool downlinkAlarm = false;
-bool uplinkAlarm = false;
+bool vAlarm = false;
+bool dlAlarm = false;
+bool ulAlarm = false;
 GPIO_PinState pinVoltageAlarm;
 GPIO_PinState pinDownlinkAlarm;
+char dcValueObjName[4];
+char dc12vObjt[4];
+char dc24vObjt[4];
+char dc48vObjt[4];
+VOLTAGE_STATE_T dcState; // 0  = 12[v] , 1 = 24[
+float dcValue;
 
 typedef enum {
 	ART1, ART2, ART3, ART4, ARTERIAL_NUMBER
@@ -202,23 +219,12 @@ typedef enum {
 	ADC_CHANNELS
 } ADC_CHANNEL_T;
 
-typedef enum {
-	VIN_12V, VIN_24V, VIN_48V, VIN_UNKNOW
-} VOLTAGE_STATE_T;
-
 typedef struct ARTERIAL {
-	float voltage;
+
 	float current;
-	VOLTAGE_STATE_T voltageState; // 0  = 12[v] , 1 = 24[
-	uint8_t currentPercent;
-	uint8_t power;
-	char vObjName[4];
-	char v12StateObjsName[4];
-	char v24StateObjsName[4];
-	char v48StateObjsName[4];
-	char cObjName[4];
-	char cBarObjName[4];
-	char pObjName[4];
+	uint8_t cBar;
+	char cObj[4];
+	char cBarObj[4];
 	char rfObjName[4];
 	char dcObjName[4];
 	uint8_t vObjID;
@@ -226,8 +232,8 @@ typedef struct ARTERIAL {
 	uint8_t pObjID;
 	uint8_t rfObjID;
 	uint8_t dcObID;
-	bool adcCurAlarm;
-	GPIO_PinState pinCurAlarm;
+	bool cAlarm;
+	GPIO_PinState cOnAlarm;
 } Arterial;
 
 // Create a lookup table to map arterial numbers to ADC indices
@@ -256,7 +262,7 @@ false } };
 // UART1 variables for nextion comunication
 uint8_t uart1RxData[BUTTON_DATA_SIZE];
 uint8_t Cmd_End[3] = { 0xff, 0xff, 0xff };
-bool sendData = false;
+bool sendDataOnTimeout = false;
 
 // UART2 variables for parameter quering
 typedef enum MODULE_FUNCTION {
@@ -306,20 +312,24 @@ uint8_t rxData;
 uint8_t uart2RxSize = 0;
 uint8_t uart2RxData[UART2_RX_BUFFLEN];
 bool isRxDataReady = false;
-
 uint8_t txData;
 uint8_t uart2TxIndex = 0;
 uint8_t uart2TxData[UART2_RX_BUFFLEN];
-uint16_t adcValues[ADC_CHANNELS];
 
-void sendNumToNextion(char *obj, int32_t num) {
+uint32_t adcValues[ADC_CHANNELS];
+uint8_t adcCounter[ADC_CHANNELS] = { 0 };
+uint16_t adcReadings[ADC_CHANNELS][ADC_WINDOW_SIZE] = { 0 };
+uint16_t adcMA[ADC_CHANNELS];
+uint32_t adcSum[ADC_CHANNELS] = { 0 };
+
+void intToNextion(char *obj, int32_t num) {
 	uint8_t buffer[30] = { 0 };
 	int len = sprintf((char*) buffer, "%s.val=%ld", obj, num);
 	HAL_UART_Transmit(&huart1, buffer, len, 1000);
 	HAL_UART_Transmit(&huart1, Cmd_End, 3, 100);
 }
 
-void sendFloatToNextion(char *obj, float num, int dp) {
+void floatToNextion(char *obj, float num, int dp) {
 	// convert to the integer
 	uint8_t len = 0;
 	int32_t number = num * (pow(10, dp));
@@ -333,7 +343,7 @@ void sendFloatToNextion(char *obj, float num, int dp) {
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
 
-void sendColorToNextion(char *obj, uint32_t color) {
+void colorToNextion(char *obj, uint32_t color) {
 	// convert to the integer
 	uint8_t len = 0;
 	uint8_t buffer[30] = { 0 };
@@ -341,15 +351,21 @@ void sendColorToNextion(char *obj, uint32_t color) {
 	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
+void textColorToNextion(char *obj, uint32_t color) {
+	// convert to the integer
+	uint8_t len = 0;
+	uint8_t buffer[30] = { 0 };
+	len = sprintf((char*) buffer, "%s.pco=%lu", obj, color);
+	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
+}
 
 void sendArterialToNextion(Arterial arterial) {
-	sendFloatToNextion(arterial.vObjName, arterial.voltage, 2);
-	sendFloatToNextion(arterial.cObjName, arterial.current, 2);
-	sendFloatToNextion(arterial.pObjName, arterial.power, 2);
-	if (arterial.adcCurAlarm)
-		sendColorToNextion(arterial.cObjName, RED_BACKGROUND);
+	floatToNextion(arterial.cObj, arterial.current, 2);
+	if (arterial.cAlarm)
+		colorToNextion(arterial.cObj, RED_C);
 	else
-		sendColorToNextion(arterial.cObjName, WHITE_BACKGROUND);
+		colorToNextion(arterial.cObj, WHITE_C);
 
 }
 
@@ -365,7 +381,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				else if (uart1RxData[CMD] == arterial[i].rfObjID)
 					arterialIOs[i].rfOn = uart1RxData[VALUE];
 			}
-			sendData = true;
+			sendDataOnTimeout = true;
 		}
 		huart->RxXferCount = 0;
 		HAL_UART_Receive_IT(huart, uart1RxData, BUTTON_DATA_SIZE);
@@ -432,21 +448,6 @@ float value = 1.1;
 
 void arterialInit(Arterial arterial[ARTERIAL_NUMBER],
 		ArterialIO arterialIOs[ARTERIAL_NUMBER]) {
-	const char *voltageObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_VOLTAGE_OBJECT_NAME, ARTERIAL2_VOLTAGE_OBJECT_NAME,
-	ARTERIAL3_VOLTAGE_OBJECT_NAME, ARTERIAL4_VOLTAGE_OBJECT_NAME };
-
-	const char *voltage12ObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_12V_OBJECT_NAME, ARTERIAL2_12V_OBJECT_NAME,
-	ARTERIAL3_12V_OBJECT_NAME, ARTERIAL4_12V_OBJECT_NAME };
-
-	const char *voltage24ObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_24V_OBJECT_NAME, ARTERIAL2_24V_OBJECT_NAME,
-	ARTERIAL3_24V_OBJECT_NAME, ARTERIAL4_24V_OBJECT_NAME };
-
-	const char *voltage48ObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_48V_OBJECT_NAME, ARTERIAL2_48V_OBJECT_NAME,
-	ARTERIAL3_48V_OBJECT_NAME, ARTERIAL4_48V_OBJECT_NAME };
 
 	const char *currentObjectNames[ARTERIAL_NUMBER] = {
 	ARTERIAL1_CURRENT_OBJECT_NAME, ARTERIAL2_CURRENT_OBJECT_NAME,
@@ -454,9 +455,7 @@ void arterialInit(Arterial arterial[ARTERIAL_NUMBER],
 	const char *currentBarObjectNames[ARTERIAL_NUMBER] = {
 	ARTERIAL1_CURRENT_BAR_NAME, ARTERIAL2_CURRENT_BAR_NAME,
 	ARTERIAL3_CURRENT_BAR_NAME, ARTERIAL4_CURRENT_BAR_NAME };
-	const char *powerObjectNames[ARTERIAL_NUMBER] = {
-	ARTERIAL1_POWER_OBJECT_NAME, ARTERIAL2_POWER_OBJECT_NAME,
-	ARTERIAL3_POWER_OBJECT_NAME, ARTERIAL4_POWER_OBJECT_NAME };
+
 	const char *dcOnObjectNames[ARTERIAL_NUMBER] = {
 	ARTERIAL1_DC_ON_OBJECT_NAME, ARTERIAL2_DC_ON_OBJECT_NAME,
 	ARTERIAL3_DC_ON_OBJECT_NAME, ARTERIAL4_DC_ON_OBJECT_NAME };
@@ -474,13 +473,8 @@ void arterialInit(Arterial arterial[ARTERIAL_NUMBER],
 	ARTERIAL2_RF_ON_OBJECT_ID, ARTERIAL3_RF_ON_OBJECT_ID,
 	ARTERIAL4_RF_ON_OBJECT_ID };
 	for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
-		sprintf(arterial[i].vObjName, voltageObjectNames[i]);
-		sprintf(arterial[i].v12StateObjsName, voltage12ObjectNames[i]);
-		sprintf(arterial[i].v24StateObjsName, voltage24ObjectNames[i]);
-		sprintf(arterial[i].v48StateObjsName, voltage48ObjectNames[i]);
-		sprintf(arterial[i].cObjName, currentObjectNames[i]);
-		sprintf(arterial[i].cBarObjName, currentBarObjectNames[i]);
-		sprintf(arterial[i].pObjName, powerObjectNames[i]);
+		sprintf(arterial[i].cObj, currentObjectNames[i]);
+		sprintf(arterial[i].cBarObj, currentBarObjectNames[i]);
 		sprintf(arterial[i].dcObjName, dcOnObjectNames[i]);
 		sprintf(arterial[i].rfObjName, rfOnObjectNames[i]);
 
@@ -495,7 +489,7 @@ void arterialInit(Arterial arterial[ARTERIAL_NUMBER],
 void TIM2_IRQHandler(void) {
 	if (TIM2->SR & TIM_SR_UIF) {
 		TIM2->SR &= ~TIM_SR_UIF;  // Clear the update interrupt flag
-		sendData = true;
+		sendDataOnTimeout = true;
 	}
 }
 
@@ -524,30 +518,28 @@ void updateArterialData() {
 		HAL_GPIO_WritePin(arterialIOs[numr].rfPort, arterialIOs[numr].rfPin,
 				arterialIOs[numr].rfOn);
 
-		arterial[numr].voltage = arduino_map(adcValues[VOLTAGE_CH],
-		ADC_MIN_VALUE, ADC_MAX_VALUE, VOLTAGE_MIN, VOLTAGE_MAX);
-
-		if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_5V
-				&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_12V) {
-			arterial[numr].voltageState = VIN_12V;
-		} else if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_23V
-				&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_36V) {
-			arterial[numr].voltageState = VIN_24V;
-		} else if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_36V) {
-			arterial[numr].voltageState = VIN_48V;
-		} else {
-			arterial[numr].voltageState = VIN_UNKNOW;
-		}
 		int adcIndex = arterialToADCIndex[numr];
 		arterial[numr].current = arduino_map(adcValues[adcIndex],
-		ADC_MIN_VALUE,
-		ADC_MAX_VALUE, 0, 3);
-		arterial[numr].currentPercent = arduino_map(adcValues[adcIndex],
-		ADC_MIN_VALUE,
-		ADC_MAX_VALUE, 0, 100);
+		ADC_CURRENT_MIN_VALUE,
+		ADC_CURRENT_MAX_VALUE, CURRENT_MIN_VALUE, CURRENT_MAX_VALUE);
+		arterial[numr].cBar = arduino_map(adcValues[adcIndex], 0, 4095, 0, 100);
+		if (adcValues[adcIndex] < 1)
+			arterial[numr].current = 0;
+	}
 
-		arterial[numr].power = arterial[numr].voltage * arterial[numr].current;
+	dcValue = arduino_map(adcValues[VOLTAGE_CH],
+	ADC_MIN_VALUE, ADC_MAX_VALUE, VOLTAGE_MIN, VOLTAGE_MAX);
 
+	if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_5V
+			&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_18V) {
+		dcState = VIN_12V;
+	} else if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_18V
+			&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_36V) {
+		dcState = VIN_24V;
+	} else if (adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_36V) {
+		dcState = VIN_48V;
+	} else {
+		dcState = VIN_UNKNOW;
 	}
 
 	// Map downlink and uplink levels
@@ -605,6 +597,7 @@ int main(void) {
 	/* MCU Configuration--------------------------------------------------------*/
 
 	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+
 	HAL_Init();
 
 	/* USER CODE BEGIN Init */
@@ -625,7 +618,7 @@ int main(void) {
 	MX_I2C2_Init();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
-	MX_IWDG_Init();
+//	MX_IWDG_Init();
 	/* USER CODE BEGIN 2 */
 
 	// Enable the timer clock
@@ -643,159 +636,142 @@ int main(void) {
 	TIM2_Interrupt_Init();
 	enableGlobalInterrupts();
 
-//	res = HAL_ADC_Start_DMA(&hadc, (uint32_t*) adcValues, ADC_CHANNELS);
-//	if (res != HAL_OK)
-//		Error_Handler();
+	res = HAL_ADC_Start_DMA(&hadc, (uint32_t*) adcValues, ADC_CHANNELS);
+	if (res != HAL_OK)
+		Error_Handler();
 
 	res = HAL_UART_Receive_IT(&huart1, uart1RxData, BUTTON_DATA_SIZE);
 	if (res != HAL_OK)
 		Error_Handler();
 
-	uint32_t nextionSendTicks = HAL_GetTick();
-	uint32_t nextionSendTimeout = 1000;
 	uint8_t dataSize = 0;
 	arterialInit(arterial, arterialIOs);
+	sprintf(dc12vObjt, ARTERIAL_12V_OBJECT_NAME);
+	sprintf(dc24vObjt, ARTERIAL_24V_OBJECT_NAME);
+	sprintf(dc48vObjt, ARTERIAL_48V_OBJECT_NAME);
 	startTimer2();
-	HAL_IWDG_Refresh(&hiwdg);
+//	HAL_IWDG_Refresh(&hiwdg);
 	// ...
 	/* USER CODE END 2 */
-	srand(5000);
-
+	//srand(5000);
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 
-		for (int numr = 0; numr < ARTERIAL_NUMBER; numr++) {
-			int adcIndex = arterialToADCIndex[numr];
-			if (arterialIOs[numr].dcOn) {
-				adcValues[adcIndex] = rand() % 4095;
+		for (int adcIdx = 0; adcIdx < ADC_CHANNELS; adcIdx++) {
+			// Subtract oldest value from the sum
 
-			} else {
-				adcValues[adcIndex] = 0;
+			adcSum[adcIdx] -= adcReadings[adcIdx][adcCounter[adcIdx]];
+			// Subtraction overflow check
+			if ((int32_t) adcSum[adcIdx] < 0)
+				adcSum[adcIdx] = 0;
+
+			// Store the new value in the buffer
+			adcReadings[adcIdx][adcCounter[adcIdx]] = adcValues[adcIdx];
+
+			// Add new value to the sum
+			adcSum[adcIdx] += adcValues[adcIdx];
+
+			// Calculate and return the average
+			adcMA[adcIdx] = (adcSum[adcIdx] / ADC_WINDOW_SIZE);
+
+			// Increment the current index and wrap around if necessary
+			adcCounter[adcIdx]++;
+			if (adcCounter[adcIdx] >= ADC_WINDOW_SIZE) {
+				adcCounter[adcIdx] = 0;
 			}
+
 		}
-		adcValues[VOLTAGE_CH] = rand() % 4095;
-		updateArterialData();
 
-		updateUART2Tx(&dataSize);
+		for (int i = 0; i < ARTERIAL_NUMBER; i++) {
+			HAL_GPIO_WritePin(arterialIOs[i].dcPort, arterialIOs[i].dcPin,
+					arterialIOs[i].dcOn);
+			HAL_GPIO_WritePin(arterialIOs[i].rfPort, arterialIOs[i].rfPin,
+					arterialIOs[i].rfOn);
 
-		if (sendData) {
-			sendData = false;
-			for (uint8_t adcIdx = 0; adcIdx < ADC_CHANNELS; adcIdx++) {
-				if (adcIdx == ART1_CURRENT_CH) {
-					arterial[ART1].adcCurAlarm = adcValues[adcIdx]
-							> ART1_THRESHOLD;
-				} else if (adcIdx == ART2_CURRENT_CH) {
-					arterial[ART2].adcCurAlarm = adcValues[adcIdx]
-							> ART2_THRESHOLD;
-				} else if (adcIdx == ART3_CURRENT_CH) {
-					arterial[ART3].adcCurAlarm = adcValues[adcIdx]
-							> ART3_THRESHOLD;
-				} else if (adcIdx == ART4_CURRENT_CH) {
-					arterial[ART4].adcCurAlarm = adcValues[adcIdx]
-							> ART4_THRESHOLD;
-				} else if (adcIdx == VOLTAGE_CH) {
-					voltageAlarm = adcValues[adcIdx] > VOLT_THRESHOLD;
-				} else if (adcIdx == DOWNLINK_LVL_CH) {
-					downlinkAlarm = adcValues[adcIdx] > DOWNLINK_THRESHOLD;
-				} else if (adcIdx == UPLINK_LVL_CH) {
-					uplinkAlarm = adcValues[adcIdx] > UPLINK_THRESHOLD;
-				} else {
-					// Handle other cases if necessary
-				}
-			}
+			int adcIndex = arterialToADCIndex[i];
+			arterial[i].current = arduino_map(adcValues[adcIndex],
+			ADC_CURRENT_MIN_VALUE,
+			ADC_CURRENT_MAX_VALUE, CURRENT_MIN_VALUE, CURRENT_MAX_VALUE);
+			arterial[i].cBar = arduino_map(adcValues[adcIndex], 0, 4095, 0,
+					100);
+			if (adcValues[adcIndex] < 1)
+				arterial[i].current = 0;
+		}
+
+		dcValue = arduino_map(adcValues[VOLTAGE_CH],
+		ADC_MIN_VALUE, ADC_MAX_VALUE, VOLTAGE_MIN, VOLTAGE_MAX);
+		downlinkLevel = arduino_map(adcValues[DOWNLINK_LVL_CH], ADC_MIN_VALUE,
+		ADC_MAX_VALUE, DOWNLINK_LEVEL_MIN, DOWNLINK_LEVEL_MAX);
+
+		dcState =
+				(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_5V
+						&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_18V) ?
+						VIN_12V :
+				(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_18V
+						&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_36V) ?
+						VIN_24V :
+				(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_36V) ?
+						VIN_48V : VIN_UNKNOW;
+
+		if (sendDataOnTimeout) {
+			sendDataOnTimeout = false;
+			bool dcOn = false;
 
 			for (int i = 0; i < ARTERIAL_NUMBER; i++) {
-				//sendFloatToNextion(arterial[i].vObjName, arterial[i].voltage,
-				sendFloatToNextion(arterial[i].cObjName, arterial[i].current,
-						2);
-				sendNumToNextion(arterial[i].cBarObjName,
-						arterial[i].currentPercent);
-
-				if (arterialIOs[i].dcOn) {
-					if (arterial[i].voltageState == VIN_12V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						GREEN_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						WHITE_BACKGROUND);
-					} else if (arterial[i].voltageState == VIN_24V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						GREEN_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						WHITE_BACKGROUND);
-					} else if (arterial[i].voltageState == VIN_48V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						GREEN_BACKGROUND);
-					} else {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						WHITE_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						WHITE_BACKGROUND);
-					}
-				} else {
-
-					if (arterial[i].voltageState == VIN_12V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						GREEN_DARK_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						GREY_BACKGROUND);
-					} else if (arterial[i].voltageState == VIN_24V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						GREEN_DARK_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						GREY_BACKGROUND);
-					} else if (arterial[i].voltageState == VIN_48V) {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						GREEN_DARK_BACKGROUND);
-					} else {
-						sendColorToNextion(arterial[i].v12StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v24StateObjsName,
-						GREY_BACKGROUND);
-						sendColorToNextion(arterial[i].v48StateObjsName,
-						GREY_BACKGROUND);
-					}
-				}
-				if (arterial[i].adcCurAlarm)
-					sendColorToNextion(arterial[i].cObjName,
-					RED_BACKGROUND);
-				else
-					sendColorToNextion(arterial[i].cObjName,
-					WHITE_BACKGROUND);
+				floatToNextion(arterial[i].cObj, arterial[i].current, 2);
+				intToNextion(arterial[i].cBarObj, arterial[i].cBar);
+				dcOn |= arterialIOs[i].dcOn;
+				colorToNextion(arterial[i].cObj,
+						arterial[i].cAlarm ? RED_C : WHITE_C);
 			}
-			sendFloatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 2);
-//			sendFloatToNextion(UPLINK_OBJECT_NAME, uplinkLevel, 2);
+			uint32_t fontColor = dcOn ? BLACK_C : WHITE_C;
+			uint32_t backColor = dcOn ? WHITE_C : GREY_C;
+			textColorToNextion(dc12vObjt, fontColor);
+			textColorToNextion(dc24vObjt, fontColor);
+			textColorToNextion(dc48vObjt, fontColor);
+
+			if (dcState == VIN_12V){
+				colorToNextion(dc12vObjt, ORANGE_C);
+				colorToNextion(dc24vObjt, backColor);
+				colorToNextion(dc48vObjt, backColor);
+			}
+			else if (dcState == VIN_24V){
+				colorToNextion(dc12vObjt, backColor);
+				colorToNextion(dc24vObjt, ORANGE_C);
+				colorToNextion(dc48vObjt, backColor);
+
+			}
+			else if (dcState == VIN_48V){
+				colorToNextion(dc12vObjt, backColor);
+				colorToNextion(dc24vObjt, backColor);
+				colorToNextion(dc48vObjt, ORANGE_C);
+			}
+
+			floatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 0);
+			colorToNextion(DOWNLINK_OBJECT_NAME, dlAlarm ? RED_C : WHITE_C);
 		}
 
-		arterial[ART1].pinCurAlarm = HAL_GPIO_ReadPin(ALARM_A1_GPIO_Port,
+		arterial[ART1].cAlarm = adcMA[ART1_CURRENT_CH] > ART1_THRESHOLD;
+		arterial[ART2].cAlarm = adcMA[ART2_CURRENT_CH] > ART2_THRESHOLD;
+		arterial[ART3].cAlarm = adcMA[ART3_CURRENT_CH] > ART3_THRESHOLD;
+		arterial[ART4].cAlarm = adcMA[ART4_CURRENT_CH] > ART4_THRESHOLD;
+		arterial[ART1].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A1_GPIO_Port,
 		ALARM_A1_Pin);	//ESTADO ALARM1 art4 > 3
-		arterial[ART2].pinCurAlarm = HAL_GPIO_ReadPin(ALARM_A2_GPIO_Port,
+		arterial[ART2].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A2_GPIO_Port,
 		ALARM_A2_Pin);	//ESTADO ALARM2 art3 >
-		arterial[ART3].pinCurAlarm = HAL_GPIO_ReadPin(ALARM_A3_GPIO_Port,
+		arterial[ART3].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A3_GPIO_Port,
 		ALARM_A3_Pin);	//ESTADO ALARM3 art2 >
-		arterial[ART4].pinCurAlarm = HAL_GPIO_ReadPin(ALARM_A4_GPIO_Port,
+		arterial[ART4].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A4_GPIO_Port,
 		ALARM_A4_Pin);	//ESTADO ALARM4 art1 >
 		pinDownlinkAlarm = HAL_GPIO_ReadPin(ALARM_VIN_GPIO_Port,
 		ALARM_VIN_Pin);	//ESTADO ALARM5 fuente >
-		HAL_IWDG_Refresh(&hiwdg);
+		vAlarm = adcMA[VOLTAGE_CH] > VOLT_THRESHOLD;
+		dlAlarm = adcMA[DOWNLINK_LVL_CH] > DOWNLINK_THRESHOLD;
+		ulAlarm = adcMA[UPLINK_LVL_CH] > UPLINK_THRESHOLD;
+
+		updateUART2Tx(&dataSize);
+		//		HAL_IWDG_Refresh(&hiwdg);
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
