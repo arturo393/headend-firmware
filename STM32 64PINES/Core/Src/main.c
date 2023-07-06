@@ -162,9 +162,9 @@ static void MX_IWDG_Init(void);
 // Downlink ADC Values
 
 #define ADC_DOWNLINK_MAX 917
-#define DOWNLINK_LEVEL_MAX -11.8
-#define ADC_DOWNLINK_MIN 629
-#define DOWNLINK_LEVEL_MIN -21
+#define DOWNLINK_LEVEL_MAX -11
+#define ADC_DOWNLINK_MIN 489
+#define DOWNLINK_LEVEL_MIN -25.7
 #define DOWNLINK_THRESHOLD 1230
 
 #define UPLINK_LEVEL_MIN -45
@@ -205,7 +205,7 @@ char dlBarObj[4];
 bool vAlarm = false;
 bool dlAlarm = false;
 bool ulAlarm = false;
-GPIO_PinState pinVoltageAlarm;
+GPIO_PinState pinDcAlarm;
 GPIO_PinState pinDownlinkAlarm;
 char dcValueObjName[4];
 char dc12vObjt[4];
@@ -248,7 +248,8 @@ typedef struct ARTERIAL {
 	uint8_t rfObjID;
 	uint8_t dcObjID;
 	bool cAlarm;
-	GPIO_PinState cOnAlarm;
+	uint32_t dcAlarmColor;
+	uint32_t cAlarmColor;
 } Arterial;
 
 // Create a lookup table to map arterial numbers to ADC indices
@@ -260,19 +261,16 @@ typedef struct {
 	uint16_t dcPin;
 	GPIO_TypeDef *rfPort;
 	uint16_t rfPin;
+	GPIO_TypeDef *AlarmPort;
+	uint16_t AlarmPin;
 	bool dcOn;
+	bool dcOnLast;
 	bool rfOn;
+	bool alarm;
 } ArterialIO;
 
 Arterial arterial[ARTERIAL_NUMBER];
-ArterialIO arterialIOs[ARTERIAL_NUMBER] = { { DC_A1_GPIO_Port,
-DC_A1_Pin, RF_A1_GPIO_Port, RF_A1_Pin, false,
-false }, { DC_A2_GPIO_Port, DC_A2_Pin,
-RF_A2_GPIO_Port, RF_A2_Pin, false, false }, {
-DC_A3_GPIO_Port, DC_A3_Pin, RF_A3_GPIO_Port,
-RF_A3_Pin, false, false }, { DC_A4_GPIO_Port,
-DC_A4_Pin, RF_A4_GPIO_Port, RF_A4_Pin, false,
-false } };
+ArterialIO arterialIOs[ARTERIAL_NUMBER];
 
 // UART1 variables for nextion comunication
 uint8_t uart1RxData[20];
@@ -283,7 +281,6 @@ bool isCmdOk = false;
 bool isRxDataReady = false;
 
 // UART2 variables for parameter quering
-
 uint8_t rxData;
 uint8_t uart2RxSize = 0;
 uint8_t uart2RxData[UART2_RX_BUFFLEN];
@@ -327,6 +324,25 @@ void colorToNextion(char *obj, uint32_t color) {
 	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
+
+void colorToNextionOn(char *obj, uint32_t color) {
+	// convert to the integer
+	uint8_t len = 0;
+	uint8_t buffer[30] = { 0 };
+	len = sprintf((char*) buffer, "%s.bco2=%lu", obj, color);
+	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
+}
+
+void colorToNextionOff(char *obj, uint32_t color) {
+	// convert to the integer
+	uint8_t len = 0;
+	uint8_t buffer[30] = { 0 };
+	len = sprintf((char*) buffer, "%s.bco=%lu", obj, color);
+	HAL_UART_Transmit(&huart1, buffer, len, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
+}
+
 void textColorToNextion(char *obj, uint32_t color) {
 	// convert to the integer
 	uint8_t len = 0;
@@ -354,11 +370,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				&& (uart1RxData[END] == *END_RX_DATA)) {
 
 			for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
-				if (uart1RxData[CMD] == arterial[i].dcObjID)
+				if (uart1RxData[CMD] == arterial[i].dcObjID) {
 					arterialIOs[i].dcOn = uart1RxData[VALUE];
+					HAL_GPIO_WritePin(arterialIOs[i].dcPort,
+							arterialIOs[i].dcPin, arterialIOs[i].dcOn);
 
-				else if (uart1RxData[CMD] == arterial[i].rfObjID)
+				}
+
+				else if (uart1RxData[CMD] == arterial[i].rfObjID) {
 					arterialIOs[i].rfOn = uart1RxData[VALUE];
+					HAL_GPIO_WritePin(arterialIOs[i].rfPort,
+							arterialIOs[i].rfPin, arterialIOs[i].rfOn);
+				}
 			}
 			sendDataOnTimeout = true;
 			isCmdOk = false;
@@ -402,8 +425,6 @@ void nextionObjectInit() {
 	arterial[ART1].cObjID = ARTERIAL1_CURRENT_OBJECT_ID;
 	arterial[ART1].dcObjID = ARTERIAL1_DC_ON_OBJECT_ID;
 	arterial[ART1].rfObjID = ARTERIAL1_RF_ON_OBJECT_ID;
-	arterialIOs[ART1].dcOn = false;
-	arterialIOs[ART1].rfOn = false;
 
 	// Initialize arterial 2
 	snprintf(arterial[ART2].cObj, sizeof(arterial[ART2].cObj), "%s",
@@ -417,8 +438,6 @@ void nextionObjectInit() {
 	arterial[ART2].cObjID = ARTERIAL2_CURRENT_OBJECT_ID;
 	arterial[ART2].dcObjID = ARTERIAL2_DC_ON_OBJECT_ID;
 	arterial[ART2].rfObjID = ARTERIAL2_RF_ON_OBJECT_ID;
-	arterialIOs[ART2].dcOn = false;
-	arterialIOs[ART2].rfOn = false;
 
 	// Initialize arterial 3
 	snprintf(arterial[ART3].cObj, sizeof(arterial[ART3].cObj), "%s",
@@ -432,8 +451,6 @@ void nextionObjectInit() {
 	arterial[ART3].cObjID = ARTERIAL3_CURRENT_OBJECT_ID;
 	arterial[ART3].dcObjID = ARTERIAL3_DC_ON_OBJECT_ID;
 	arterial[ART3].rfObjID = ARTERIAL3_RF_ON_OBJECT_ID;
-	arterialIOs[ART3].dcOn = false;
-	arterialIOs[ART3].rfOn = false;
 
 	// Initialize arterial 4
 	snprintf(arterial[ART4].cObj, sizeof(arterial[ART4].cObj), "%s",
@@ -447,13 +464,51 @@ void nextionObjectInit() {
 	arterial[ART4].cObjID = ARTERIAL4_CURRENT_OBJECT_ID;
 	arterial[ART4].dcObjID = ARTERIAL4_DC_ON_OBJECT_ID;
 	arterial[ART4].rfObjID = ARTERIAL4_RF_ON_OBJECT_ID;
-	arterialIOs[ART4].dcOn = false;
-	arterialIOs[ART4].rfOn = false;
 
 	snprintf(dc12vObjt, sizeof(dc12vObjt), "%s", DC_12V_OBJECT_NAME);
 	snprintf(dc24vObjt, sizeof(dc24vObjt), "%s", DC_24V_OBJECT_NAME);
 	snprintf(dc48vObjt, sizeof(dc48vObjt), "%s", DC_48V_OBJECT_NAME);
 	snprintf(dlBarObj, sizeof(dlBarObj), "%s", DL_BAR_OBJ);
+}
+
+void initArterialIOs() {
+	for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
+		arterialIOs[i].dcOn = false;
+		arterialIOs[i].rfOn = false;
+		arterialIOs[i].alarm = false;
+
+		if (i == ART1) {
+			arterialIOs[i].dcPort = DC_A1_GPIO_Port;
+			arterialIOs[i].dcPin = DC_A1_Pin;
+			arterialIOs[i].rfPort = RF_A1_GPIO_Port;
+			arterialIOs[i].rfPin = RF_A1_Pin;
+			arterialIOs[i].AlarmPort = ALARM_A1_GPIO_Port;
+			arterialIOs[i].AlarmPin = ALARM_A1_Pin;
+		} else if (i == ART2) {
+			arterialIOs[i].dcPort = DC_A2_GPIO_Port;
+			arterialIOs[i].dcPin = DC_A2_Pin;
+			arterialIOs[i].rfPort = RF_A2_GPIO_Port;
+			arterialIOs[i].rfPin = RF_A2_Pin;
+			arterialIOs[i].AlarmPort = ALARM_A2_GPIO_Port;
+			arterialIOs[i].AlarmPin = ALARM_A2_Pin;
+		} else if (i == ART3) {
+			arterialIOs[i].dcPort = DC_A3_GPIO_Port;
+			arterialIOs[i].dcPin = DC_A3_Pin;
+			arterialIOs[i].rfPort = RF_A3_GPIO_Port;
+			arterialIOs[i].rfPin = RF_A3_Pin;
+			arterialIOs[i].AlarmPort = ALARM_A3_GPIO_Port;
+			arterialIOs[i].AlarmPin = ALARM_A3_Pin;
+		} else if (i == ART4) {
+			arterialIOs[i].dcPort = DC_A4_GPIO_Port;
+			arterialIOs[i].dcPin = DC_A4_Pin;
+			arterialIOs[i].rfPort = RF_A4_GPIO_Port;
+			arterialIOs[i].rfPin = RF_A4_Pin;
+			arterialIOs[i].AlarmPort = ALARM_A4_GPIO_Port;
+			arterialIOs[i].AlarmPin = ALARM_A4_Pin;
+		} else {
+			// Handle the case for additional indices if required
+		}
+	}
 }
 
 void TIM2_IRQHandler(void) {
@@ -487,16 +542,12 @@ void updateAlarm() {
 	arterial[ART2].cAlarm = adcValues[ART2_CURRENT_CH] > ART2_THRESHOLD;
 	arterial[ART3].cAlarm = adcValues[ART3_CURRENT_CH] > ART3_THRESHOLD;
 	arterial[ART4].cAlarm = adcValues[ART4_CURRENT_CH] > ART4_THRESHOLD;
-	arterial[ART1].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A1_GPIO_Port,
-	ALARM_A1_Pin);	//ESTADO ALARM1 art4 > 3
-	arterial[ART2].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A2_GPIO_Port,
-	ALARM_A2_Pin);	//ESTADO ALARM2 art3 >
-	arterial[ART3].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A3_GPIO_Port,
-	ALARM_A3_Pin);	//ESTADO ALARM3 art2 >
-	arterial[ART4].cOnAlarm = HAL_GPIO_ReadPin(ALARM_A4_GPIO_Port,
-	ALARM_A4_Pin);	//ESTADO ALARM4 art1 >
+	for (int i = 0; i < ARTERIAL_NUMBER; i++)
+		arterialIOs[i].alarm = HAL_GPIO_ReadPin(arterialIOs[i].AlarmPort,
+				arterialIOs[i].AlarmPin) == GPIO_PIN_SET;
+
 	pinDownlinkAlarm = HAL_GPIO_ReadPin(ALARM_VIN_GPIO_Port,
-	ALARM_VIN_Pin);	//ESTADO ALARM5 fuente >
+	ALARM_VIN_Pin == GPIO_PIN_SET);	//ESTADO ALARM5 fuente >
 	vAlarm = adcValues[VOLTAGE_CH] > VOLT_THRESHOLD;
 	dlAlarm = adcValues[DOWNLINK_LVL_CH] > DOWNLINK_THRESHOLD;
 	ulAlarm = adcValues[UPLINK_LVL_CH] > UPLINK_THRESHOLD;
@@ -512,6 +563,7 @@ void sendDataIfTimeout() {
 	uint32_t currFontColor;
 	uint32_t fontColor;
 	uint32_t backColor;
+
 	for (int i = 0; i < ARTERIAL_NUMBER; i++) {
 
 		floatToNextion(arterial[i].cObj, arterial[i].current, 2);
@@ -519,14 +571,47 @@ void sendDataIfTimeout() {
 		dcOn |= arterialIOs[i].dcOn;
 		rfOn |= arterialIOs[i].rfOn;
 
+		if (arterialIOs[i].dcOn) {
+			arterialIOs[i].alarm = HAL_GPIO_ReadPin(arterialIOs[i].AlarmPort,
+					arterialIOs[i].AlarmPin) == GPIO_PIN_SET;
+			if (arterialIOs[i].alarm == false) {
+
+				if (arterial[i].dcAlarmColor == ORANGE_C)
+					arterial[i].dcAlarmColor = RED_C;
+				else if (arterial[i].dcAlarmColor == RED_C)
+					arterial[i].dcAlarmColor = ORANGE_C;
+				else
+					arterial[i].dcAlarmColor = RED_C;
+			} else
+				arterial[i].dcAlarmColor = ORANGE_C;
+		} else
+			arterial[i].dcAlarmColor = GREY_C;
+		colorToNextionOn(arterial[i].dcObjName, arterial[i].dcAlarmColor);
+
+		if (arterialIOs[i].dcOn) {
+			if (arterial[i].cAlarm == true) {
+
+				if (arterial[i].cAlarmColor == WHITE_C)
+					arterial[i].cAlarmColor = RED_C;
+				else if (arterial[i].cAlarmColor == RED_C)
+					arterial[i].cAlarmColor = WHITE_C;
+				else
+					arterial[i].cAlarmColor = RED_C;
+			} else
+				arterial[i].cAlarmColor = WHITE_C;
+		} else
+			arterial[i].cAlarmColor = GREY_C;
+		colorToNextion(arterial[i].cObj, arterial[i].cAlarmColor);
+
 		fontColor = arterialIOs[i].dcOn ? BLACK_C : WHITE_C;
-		backColor = arterialIOs[i].dcOn ? WHITE_C : GREY_C;
-		colorToNextion(arterial[i].cObj,
-				arterial[i].cAlarm ? RED_C : backColor);
+//		backColor = arterialIOs[i].dcOn ? WHITE_C : GREY_C;
+//		colorToNextion(arterial[i].cObj,
+//				arterial[i].cAlarm ? RED_C : backColor);
 		textColorToNextion(arterial[i].cObj,
 				arterial[i].cAlarm ? BLACK_C : fontColor);
 
 	}
+
 	fontColor = dcOn ? BLACK_C : WHITE_C;
 	backColor = dcOn ? WHITE_C : GREY_C;
 	textColorToNextion(dc12vObjt, fontColor);
@@ -563,9 +648,12 @@ void updateDlValues() {
 	ADC_DOWNLINK_MIN,
 	ADC_DOWNLINK_MAX, DOWNLINK_LEVEL_MIN, DOWNLINK_LEVEL_MAX);
 
-	dlBar = arduino_map(adcValues[DOWNLINK_LVL_CH], 370, 1500, 0, 100);
-	if((int)dlBar < 0)
+	dlBar = arduino_map(adcValues[DOWNLINK_LVL_CH], 370, 1700, 0, 100);
+	if ((int) dlBar < 0)
 		dlBar = 0;
+
+	if ((int) dlBar > 100)
+		dlBar = 100;
 }
 
 void updateDcValues() {
@@ -583,9 +671,11 @@ void updateDcValues() {
 			(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_36V) ?
 					VIN_48V : VIN_UNKNOW;
 
-	dcBar = arduino_map(dcValue, 6, 58, 0, 100);
-	if((int)dcBar < 0)
+	dcBar = arduino_map(dcValue, 0, 50, 0, 100);
+	if ((int) dcBar < 0)
 		dcBar = 0;
+	if ((int) dcBar > 100)
+		dcBar = 100;
 }
 
 uint8_t dataSize = 0;
@@ -627,16 +717,16 @@ uint8_t updateUART2Tx() {
 
 void updateArterialValues() {
 	for (int i = 0; i < ARTERIAL_NUMBER; i++) {
-		HAL_GPIO_WritePin(arterialIOs[i].dcPort, arterialIOs[i].dcPin,
-				arterialIOs[i].dcOn);
-		HAL_GPIO_WritePin(arterialIOs[i].rfPort, arterialIOs[i].rfPin,
-				arterialIOs[i].rfOn);
 
 		int adcIndex = arterialToADCIndex[i];
 		arterial[i].current = arduino_map(adcValues[adcIndex],
 		ADC_CURRENT_MIN_VALUE,
 		ADC_CURRENT_MAX_VALUE, CURRENT_MIN_VALUE, CURRENT_MAX_VALUE);
 		arterial[i].cBar = arduino_map(adcValues[adcIndex], 0, 1300, 0, 100);
+		if ((int) arterial[i].cBar > 100)
+			arterial[i].cBar = 100;
+		if ((int) arterial[i].cBar < 0)
+			arterial[i].cBar = 0;
 		if (adcValues[adcIndex] < 1)
 			arterial[i].current = 0;
 	}
@@ -755,7 +845,6 @@ void enableKeepAliveLed() {
 		HAL_GPIO_WritePin(KA_LED_GPIO_Port, KA_LED_Pin, GPIO_PIN_RESET);
 }
 
-
 /* USER CODE END 0 */
 /**
  * @brief  The application entry point.
@@ -789,7 +878,7 @@ int main(void) {
 	MX_I2C2_Init();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
-	MX_IWDG_Init();
+//	MX_IWDG_Init();
 	/* USER CODE BEGIN 2 */
 
 	// Initialize necessary peripherals and configurations
@@ -810,13 +899,14 @@ int main(void) {
 		Error_Handler();
 
 	nextionObjectInit();
+	initArterialIOs();
 
 	configureTimer2();
 	configureTimer3();
 	startTimer2();
 	startTimer3();
 
-	HAL_IWDG_Refresh(&hiwdg);
+//	HAL_IWDG_Refresh(&hiwdg);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -824,14 +914,14 @@ int main(void) {
 	while (1) {
 
 		uartReinit(5000);
+		processRs485Cmd();
 		updateArterialValues();
 		updateDlValues();
 		updateDcValues();
-		sendDataIfTimeout();
 		updateAlarm();
-		processRs485Cmd();
 		enableKeepAliveLed();
-		HAL_IWDG_Refresh(&hiwdg);
+		sendDataIfTimeout();
+//		HAL_IWDG_Refresh(&hiwdg);
 
 	}
 	/* USER CODE END WHILE */
