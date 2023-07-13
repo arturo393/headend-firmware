@@ -161,10 +161,10 @@ static void MX_IWDG_Init(void);
 
 // Downlink ADC Values
 
-#define ADC_DOWNLINK_MAX 917
-#define DOWNLINK_LEVEL_MAX -11
-#define ADC_DOWNLINK_MIN 489
-#define DOWNLINK_LEVEL_MIN -25.7
+#define ADC_DOWNLINK_MAX 1634
+#define DOWNLINK_LEVEL_MAX 11.7
+#define ADC_DOWNLINK_MIN 1014
+#define DOWNLINK_LEVEL_MIN -7.8
 #define DOWNLINK_THRESHOLD 1230
 
 #define UPLINK_LEVEL_MIN -45
@@ -849,6 +849,8 @@ void enableKeepAliveLed() {
 		HAL_GPIO_WritePin(KA_LED_GPIO_Port, KA_LED_Pin, GPIO_PIN_RESET);
 }
 
+
+uint32_t maxValue = 0;
 /* USER CODE END 0 */
 /**
  * @brief  The application entry point.
@@ -910,12 +912,17 @@ int main(void) {
 	startTimer2();
 	startTimer3();
 
+
+
 //	HAL_IWDG_Refresh(&hiwdg);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
+
+		if (adcValues[DOWNLINK_LVL_CH] > maxValue)
+			maxValue = adcValues[DOWNLINK_LVL_CH];
 
 		uartReinit(5000);
 		processRs485Cmd();
