@@ -165,7 +165,7 @@ static void MX_IWDG_Init(void);
 #define DOWNLINK_LEVEL_MAX 11.7
 #define ADC_DOWNLINK_MIN 1014
 #define DOWNLINK_LEVEL_MIN -7.8
-#define DOWNLINK_THRESHOLD 1230
+#define DOWNLINK_THRESHOLD 1600
 
 #define UPLINK_LEVEL_MIN -45
 #define UPLINK_LEVEL_MAX 0
@@ -647,6 +647,9 @@ void updateDlValues() {
 	downlinkLevel = arduino_map(adcValues[DOWNLINK_LVL_CH],
 	ADC_DOWNLINK_MIN,
 	ADC_DOWNLINK_MAX, DOWNLINK_LEVEL_MIN, DOWNLINK_LEVEL_MAX);
+	if(adcValues[DOWNLINK_LVL_CH] < 380)
+		downlinkLevel = -99.9;
+
 
 	dlBar = arduino_map(adcValues[DOWNLINK_LVL_CH], 370, 1700, 0, 100);
 	if ((int) dlBar < 0)
@@ -921,8 +924,6 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 
-		if (adcValues[DOWNLINK_LVL_CH] > maxValue)
-			maxValue = adcValues[DOWNLINK_LVL_CH];
 
 		uartReinit(5000);
 		processRs485Cmd();
