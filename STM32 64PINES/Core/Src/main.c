@@ -635,6 +635,11 @@ void sendDataIfTimeout() {
 
 	fontColor = rfOn ? BLACK_C : WHITE_C;
 	backColor = rfOn ? WHITE_C : GREY_C;
+
+	if(downlinkLevel <= -99.9 ){
+		fontColor = RED_C;
+		backColor = RED_C;
+	}
 	floatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 1);
 	colorToNextion(DOWNLINK_OBJECT_NAME, dlAlarm ? RED_C : backColor);
 	textColorToNextion(DOWNLINK_OBJECT_NAME, dlAlarm ? BLACK_C : fontColor);
@@ -887,7 +892,7 @@ int main(void) {
 	MX_I2C2_Init();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
-//	MX_IWDG_Init();
+	MX_IWDG_Init();
 	/* USER CODE BEGIN 2 */
 
 	// Initialize necessary peripherals and configurations
@@ -924,7 +929,6 @@ int main(void) {
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 
-
 		uartReinit(5000);
 		processRs485Cmd();
 		updateArterialValues();
@@ -933,7 +937,7 @@ int main(void) {
 		updateAlarm();
 		enableKeepAliveLed();
 		sendDataIfTimeout();
-//		HAL_IWDG_Refresh(&hiwdg);
+		HAL_IWDG_Refresh(&hiwdg);
 
 	}
 	/* USER CODE END WHILE */
