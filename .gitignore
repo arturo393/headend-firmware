@@ -211,3 +211,18 @@ STM32 64PINES/.cproject
 .idea/headen-fw.iml
 STM32 64PINES/Core/Inc/stm32f0xx_it.h
 STM32 64PINES/Core/Inc/stm32f0xx_hal_conf.h
+/.settings/com.st.stm32cube.ide.mcu.sfrview.prefs
+/STM32 64PINES/Debug/headend.bin
+/STM32 64PINES/Debug/headend.hex
+/STM32 64PINES/Debug/Core/Src/module.cyclo
+/STM32 64PINES/Debug/Core/Src/module.d
+/STM32 64PINES/Debug/Core/Src/module.o
+/STM32 64PINES/Debug/Core/Src/module.su
+/STM32 64PINES/Debug/Core/Src/rdss.cyclo
+/STM32 64PINES/Debug/Core/Src/rdss.d
+/STM32 64PINES/Debug/Core/Src/rdss.o
+/STM32 64PINES/Debug/Core/Src/rdss.su
+/STM32 64PINES/Debug/Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_iwdg.cyclo
+/STM32 64PINES/Debug/Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_iwdg.d
+/STM32 64PINES/Debug/Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_iwdg.o
+/STM32 64PINES/Debug/Drivers/STM32F0xx_HAL_Driver/Src/stm32f0xx_hal_iwdg.su
