@@ -183,6 +183,7 @@ static void MX_IWDG_Init(void);
 #define YELLOW_C 65504
 #define RED_C 63488
 #define WHITE_C 65535
+#define GREEN_ON_C 2016
 #define GREEN_BACKGROUND 1024
 #define GREEN_DARK_BACKGROUND 480
 #define GREY_BACKGROUND 50712
@@ -223,13 +224,13 @@ typedef enum NEXTION_UART_INDEX {
 } NEXTION_INDEX_T;
 
 typedef enum {
-	ART1_CURRENT_CH,
+	ART1_CURRENT_CHANNEL,
 	ART4_CURRENT_CH,
 	VOLTAGE_CHANNEL,
 	DOWNLINK_LVL_CH,
 	UPLINK_LVL_CH,
 	ART3_CURRENT_CH,
-	ART2_CURRENT_CH,
+	ART2_CURRENT_CHANNEL,
 	ADC_CHANNELS
 } ADC_CHANNEL_T;
 
@@ -240,36 +241,36 @@ typedef struct ARTERIAL {
 	char cObj[4];
 	char cBarObj[4];
 	char rfObjName[4];
-	char dcObjName[4];
+	char dc_object_name[4];
 	uint8_t vObjID;
 	uint8_t cObjID;
 	uint8_t pObjID;
 	uint8_t rfObjID;
 	uint8_t dcObjID;
-	bool cAlarm;
-	uint32_t dcAlarmColor;
+	bool current_alarm;
+	uint32_t dc_alarm_color;
 	uint32_t cAlarmColor;
 } Arterial;
 
 // Create a lookup table to map arterial numbers to ADC indices
-const int arterialToADCIndex[ARTERIAL_NUMBER] = { ART1_CURRENT_CH,
-		ART2_CURRENT_CH, ART3_CURRENT_CH, ART4_CURRENT_CH };
+const int arterialToADCIndex[ARTERIAL_NUMBER] = { ART1_CURRENT_CHANNEL,
+		ART2_CURRENT_CHANNEL, ART3_CURRENT_CH, ART4_CURRENT_CH };
 
 typedef struct {
 	GPIO_TypeDef *dcPort;
 	uint16_t dcPin;
 	GPIO_TypeDef *rfPort;
 	uint16_t rfPin;
-	GPIO_TypeDef *AlarmPort;
-	uint16_t AlarmPin;
-	bool dcOn;
+	GPIO_TypeDef *alarm_port;
+	uint16_t alarm_pin;
+	bool dc_on;
 	bool dcOnLast;
 	bool rfOn;
-	bool alarm;
+	bool dc_alarm;
 } ArterialIO;
 
 Arterial arterial[ARTERIAL_NUMBER];
-ArterialIO arterialIOs[ARTERIAL_NUMBER];
+ArterialIO arterial_io[ARTERIAL_NUMBER];
 
 // UART1 variables for nextion comunication
 uint8_t uartBuffer[20];
@@ -324,7 +325,7 @@ void set_color_to_nextion(char *obj, uint32_t color) {
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
 
-void colorToNextionOn(char *obj, uint32_t color) {
+void set_on_color_to_nextion(char *obj, uint32_t color) {
 	// convert to the integer
 	uint8_t len = 0;
 	uint8_t buffer[30] = { 0 };
@@ -353,7 +354,7 @@ void set_text_color_to_nextion(char *obj, uint32_t color) {
 
 void sendArterialToNextion(Arterial arterial) {
 	floatToNextion(arterial.cObj, arterial.current, 2);
-	if (arterial.cAlarm)
+	if (arterial.current_alarm)
 		set_color_to_nextion(arterial.cObj, RED_C);
 	else
 		set_color_to_nextion(arterial.cObj, WHITE_C);
@@ -370,16 +371,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 			for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
 				if (uartBuffer[CMD] == arterial[i].dcObjID) {
-					arterialIOs[i].dcOn = uartBuffer[VALUE];
-					HAL_GPIO_WritePin(arterialIOs[i].dcPort,
-							arterialIOs[i].dcPin, arterialIOs[i].dcOn);
+					arterial_io[i].dc_on = uartBuffer[VALUE];
+					HAL_GPIO_WritePin(arterial_io[i].dcPort,
+							arterial_io[i].dcPin, arterial_io[i].dc_on);
 
 				}
 
 				else if (uartBuffer[CMD] == arterial[i].rfObjID) {
-					arterialIOs[i].rfOn = uartBuffer[VALUE];
-					HAL_GPIO_WritePin(arterialIOs[i].rfPort,
-							arterialIOs[i].rfPin, arterialIOs[i].rfOn);
+					arterial_io[i].rfOn = uartBuffer[VALUE];
+					HAL_GPIO_WritePin(arterial_io[i].rfPort,
+							arterial_io[i].rfPin, arterial_io[i].rfOn);
 				}
 			}
 			sendDataOnTimeout = true;
@@ -417,8 +418,9 @@ void nextionObjectInit() {
 	ARTERIAL1_CURRENT_OBJECT_NAME);
 	snprintf(arterial[ART1].cBarObj, sizeof(arterial[ART1].cBarObj), "%s",
 	ARTERIAL1_CURRENT_BAR_NAME);
-	snprintf(arterial[ART1].dcObjName, sizeof(arterial[ART1].dcObjName), "%s",
-	ARTERIAL1_DC_ON_OBJECT_NAME);
+	snprintf(arterial[ART1].dc_object_name,
+			sizeof(arterial[ART1].dc_object_name), "%s",
+			ARTERIAL1_DC_ON_OBJECT_NAME);
 	snprintf(arterial[ART1].rfObjName, sizeof(arterial[ART1].rfObjName), "%s",
 	ARTERIAL1_RF_ON_OBJECT_NAME);
 	arterial[ART1].cObjID = ARTERIAL1_CURRENT_OBJECT_ID;
@@ -430,8 +432,9 @@ void nextionObjectInit() {
 	ARTERIAL2_CURRENT_OBJECT_NAME);
 	snprintf(arterial[ART2].cBarObj, sizeof(arterial[ART2].cBarObj), "%s",
 	ARTERIAL2_CURRENT_BAR_NAME);
-	snprintf(arterial[ART2].dcObjName, sizeof(arterial[ART2].dcObjName), "%s",
-	ARTERIAL2_DC_ON_OBJECT_NAME);
+	snprintf(arterial[ART2].dc_object_name,
+			sizeof(arterial[ART2].dc_object_name), "%s",
+			ARTERIAL2_DC_ON_OBJECT_NAME);
 	snprintf(arterial[ART2].rfObjName, sizeof(arterial[ART2].rfObjName), "%s",
 	ARTERIAL2_RF_ON_OBJECT_NAME);
 	arterial[ART2].cObjID = ARTERIAL2_CURRENT_OBJECT_ID;
@@ -443,8 +446,9 @@ void nextionObjectInit() {
 	ARTERIAL3_CURRENT_OBJECT_NAME);
 	snprintf(arterial[ART3].cBarObj, sizeof(arterial[ART3].cBarObj), "%s",
 	ARTERIAL3_CURRENT_BAR_NAME);
-	snprintf(arterial[ART3].dcObjName, sizeof(arterial[ART3].dcObjName), "%s",
-	ARTERIAL3_DC_ON_OBJECT_NAME);
+	snprintf(arterial[ART3].dc_object_name,
+			sizeof(arterial[ART3].dc_object_name), "%s",
+			ARTERIAL3_DC_ON_OBJECT_NAME);
 	snprintf(arterial[ART3].rfObjName, sizeof(arterial[ART3].rfObjName), "%s",
 	ARTERIAL3_RF_ON_OBJECT_NAME);
 	arterial[ART3].cObjID = ARTERIAL3_CURRENT_OBJECT_ID;
@@ -456,8 +460,9 @@ void nextionObjectInit() {
 	ARTERIAL4_CURRENT_OBJECT_NAME);
 	snprintf(arterial[ART4].cBarObj, sizeof(arterial[ART4].cBarObj), "%s",
 	ARTERIAL4_CURRENT_BAR_NAME);
-	snprintf(arterial[ART4].dcObjName, sizeof(arterial[ART4].dcObjName), "%s",
-	ARTERIAL4_DC_ON_OBJECT_NAME);
+	snprintf(arterial[ART4].dc_object_name,
+			sizeof(arterial[ART4].dc_object_name), "%s",
+			ARTERIAL4_DC_ON_OBJECT_NAME);
 	snprintf(arterial[ART4].rfObjName, sizeof(arterial[ART4].rfObjName), "%s",
 	ARTERIAL4_RF_ON_OBJECT_NAME);
 	arterial[ART4].cObjID = ARTERIAL4_CURRENT_OBJECT_ID;
@@ -472,38 +477,38 @@ void nextionObjectInit() {
 
 void initArterialIOs() {
 	for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
-		arterialIOs[i].dcOn = false;
-		arterialIOs[i].rfOn = false;
-		arterialIOs[i].alarm = false;
+		arterial_io[i].dc_on = false;
+		arterial_io[i].rfOn = false;
+		arterial_io[i].dc_alarm = false;
 
 		if (i == ART1) {
-			arterialIOs[i].dcPort = DC_A1_GPIO_Port;
-			arterialIOs[i].dcPin = DC_A1_Pin;
-			arterialIOs[i].rfPort = RF_A1_GPIO_Port;
-			arterialIOs[i].rfPin = RF_A1_Pin;
-			arterialIOs[i].AlarmPort = ALARM_A1_GPIO_Port;
-			arterialIOs[i].AlarmPin = ALARM_A1_Pin;
+			arterial_io[i].dcPort = DC_A1_GPIO_Port;
+			arterial_io[i].dcPin = DC_A1_Pin;
+			arterial_io[i].rfPort = RF_A1_GPIO_Port;
+			arterial_io[i].rfPin = RF_A1_Pin;
+			arterial_io[i].alarm_port = ALARM_A1_GPIO_Port;
+			arterial_io[i].alarm_pin = ALARM_A1_Pin;
 		} else if (i == ART2) {
-			arterialIOs[i].dcPort = DC_A2_GPIO_Port;
-			arterialIOs[i].dcPin = DC_A2_Pin;
-			arterialIOs[i].rfPort = RF_A2_GPIO_Port;
-			arterialIOs[i].rfPin = RF_A2_Pin;
-			arterialIOs[i].AlarmPort = ALARM_A2_GPIO_Port;
-			arterialIOs[i].AlarmPin = ALARM_A2_Pin;
+			arterial_io[i].dcPort = DC_A2_GPIO_Port;
+			arterial_io[i].dcPin = DC_A2_Pin;
+			arterial_io[i].rfPort = RF_A2_GPIO_Port;
+			arterial_io[i].rfPin = RF_A2_Pin;
+			arterial_io[i].alarm_port = ALARM_A2_GPIO_Port;
+			arterial_io[i].alarm_pin = ALARM_A2_Pin;
 		} else if (i == ART3) {
-			arterialIOs[i].dcPort = DC_A3_GPIO_Port;
-			arterialIOs[i].dcPin = DC_A3_Pin;
-			arterialIOs[i].rfPort = RF_A3_GPIO_Port;
-			arterialIOs[i].rfPin = RF_A3_Pin;
-			arterialIOs[i].AlarmPort = ALARM_A3_GPIO_Port;
-			arterialIOs[i].AlarmPin = ALARM_A3_Pin;
+			arterial_io[i].dcPort = DC_A3_GPIO_Port;
+			arterial_io[i].dcPin = DC_A3_Pin;
+			arterial_io[i].rfPort = RF_A3_GPIO_Port;
+			arterial_io[i].rfPin = RF_A3_Pin;
+			arterial_io[i].alarm_port = ALARM_A3_GPIO_Port;
+			arterial_io[i].alarm_pin = ALARM_A3_Pin;
 		} else if (i == ART4) {
-			arterialIOs[i].dcPort = DC_A4_GPIO_Port;
-			arterialIOs[i].dcPin = DC_A4_Pin;
-			arterialIOs[i].rfPort = RF_A4_GPIO_Port;
-			arterialIOs[i].rfPin = RF_A4_Pin;
-			arterialIOs[i].AlarmPort = ALARM_A4_GPIO_Port;
-			arterialIOs[i].AlarmPin = ALARM_A4_Pin;
+			arterial_io[i].dcPort = DC_A4_GPIO_Port;
+			arterial_io[i].dcPin = DC_A4_Pin;
+			arterial_io[i].rfPort = RF_A4_GPIO_Port;
+			arterial_io[i].rfPin = RF_A4_Pin;
+			arterial_io[i].alarm_port = ALARM_A4_GPIO_Port;
+			arterial_io[i].alarm_pin = ALARM_A4_Pin;
 		} else {
 			// Handle the case for additional indices if required
 		}
@@ -537,13 +542,13 @@ float arduino_map(uint16_t value, uint16_t in_min, uint16_t in_max,
 }
 
 void updateAlarm() {
-	arterial[ART1].cAlarm = adcMA[ART1_CURRENT_CH] > ART1_THRESHOLD;
-	arterial[ART2].cAlarm = adcMA[ART2_CURRENT_CH] > ART2_THRESHOLD;
-	arterial[ART3].cAlarm = adcMA[ART3_CURRENT_CH] > ART3_THRESHOLD;
-	arterial[ART4].cAlarm = adcMA[ART4_CURRENT_CH] > ART4_THRESHOLD;
+	arterial[ART1].current_alarm = adcMA[ART1_CURRENT_CHANNEL] > ART1_THRESHOLD;
+	arterial[ART2].current_alarm = adcMA[ART2_CURRENT_CHANNEL] > ART2_THRESHOLD;
+	arterial[ART3].current_alarm = adcMA[ART3_CURRENT_CH] > ART3_THRESHOLD;
+	arterial[ART4].current_alarm = adcMA[ART4_CURRENT_CH] > ART4_THRESHOLD;
 	for (int i = 0; i < ARTERIAL_NUMBER; i++)
-		arterialIOs[i].alarm = HAL_GPIO_ReadPin(arterialIOs[i].AlarmPort,
-				arterialIOs[i].AlarmPin) == GPIO_PIN_SET;
+		arterial_io[i].dc_alarm = HAL_GPIO_ReadPin(arterial_io[i].alarm_port,
+				arterial_io[i].alarm_pin) == GPIO_PIN_RESET;
 
 	pinDownlinkAlarm = HAL_GPIO_ReadPin(ALARM_VIN_GPIO_Port,
 	ALARM_VIN_Pin == GPIO_PIN_SET);	//ESTADO ALARM5 fuente >
@@ -559,8 +564,7 @@ void updateAlarm() {
  * state (on/off) and voltage level. It sets appropriate text colors, backgrounds, and
  * highlights the voltage object corresponding to the current voltage level.
  */
-void update_dc_voltage_display(bool is_dc_on)
-{
+void update_dc_voltage_display(bool is_dc_on) {
 	uint32_t font_color = is_dc_on ? BLACK_C : WHITE_C;
 	uint32_t background_color = is_dc_on ? WHITE_C : GREY_C;
 
@@ -572,32 +576,64 @@ void update_dc_voltage_display(bool is_dc_on)
 	/* Set background colors and highlight the active voltage object */
 	switch (dc_voltage_state) {
 	case VIN_12V:
-		set_color_to_nextion(dc_12v_object, ORANGE_C);
+		set_color_to_nextion(dc_12v_object, GREEN_ON_C);
 		set_color_to_nextion(dc_24v_object, background_color);
 		set_color_to_nextion(dc_48v_object, background_color);
 		break;
 	case VIN_24V:
 		set_color_to_nextion(dc_12v_object, background_color);
-		set_color_to_nextion(dc_24v_object, ORANGE_C);
+		set_color_to_nextion(dc_24v_object, GREEN_ON_C);
 		set_color_to_nextion(dc_48v_object, background_color);
 		break;
 	case VIN_48V:
 		set_color_to_nextion(dc_12v_object, background_color);
 		set_color_to_nextion(dc_24v_object, background_color);
-		set_color_to_nextion(dc_48v_object, ORANGE_C);
+		set_color_to_nextion(dc_48v_object, GREEN_ON_C);
 		break;
 	case VIN_0V:
 		set_color_to_nextion(dc_12v_object, background_color);
 		set_color_to_nextion(dc_24v_object, background_color);
 		set_color_to_nextion(dc_48v_object, background_color);
 		break;
-	default:  /* Handle other voltage states or unknown states */
+	default: /* Handle other voltage states or unknown states */
 		set_color_to_nextion(dc_12v_object, background_color);
 		set_color_to_nextion(dc_24v_object, background_color);
 		set_color_to_nextion(dc_48v_object, background_color);
 		break;
 	}
 }
+
+void set_dc_button_alarm_color(uint8_t arterial_index) {
+
+	if (!arterial_io[arterial_index].dc_on) {
+		arterial[arterial_index].dc_alarm_color = GREY_C;
+		set_on_color_to_nextion(arterial[arterial_index].dc_object_name,
+				arterial[arterial_index].dc_alarm_color);
+		return;
+	}
+
+	//arterial_io[arterial_index].dc_alarm = HAL_GPIO_ReadPin(
+	//		arterial_io[arterial_index].alarm_port,
+	//		arterial_io[arterial_index].alarm_pin) == GPIO_PIN_SET;
+
+	if (arterial_io[arterial_index].dc_alarm == false) {
+		arterial[arterial_index].dc_alarm_color = GREEN_ON_C;
+		set_on_color_to_nextion(arterial[arterial_index].dc_object_name,
+				arterial[arterial_index].dc_alarm_color);
+		return;
+	}
+
+	if (arterial[arterial_index].dc_alarm_color == GREEN_ON_C)
+		arterial[arterial_index].dc_alarm_color = RED_C;
+	else if (arterial[arterial_index].dc_alarm_color == RED_C)
+		arterial[arterial_index].dc_alarm_color = GREEN_ON_C;
+	else
+		arterial[arterial_index].dc_alarm_color = RED_C;
+
+	set_on_color_to_nextion(arterial[arterial_index].dc_object_name,
+			arterial[arterial_index].dc_alarm_color);
+}
+
 /*
  * send_data_to_nextion_on_timeout - Sends data to Nextion objects upon a timeout
  *
@@ -622,29 +658,13 @@ void send_data_to_nextion_on_timeout() {
 
 		floatToNextion(arterial[i].cObj, arterial[i].current, 2);
 		intToNextion(arterial[i].cBarObj, arterial[i].cBar);
-		dcOn |= arterialIOs[i].dcOn;
-		rfOn |= arterialIOs[i].rfOn;
+		dcOn |= arterial_io[i].dc_on;
+		rfOn |= arterial_io[i].rfOn;
 
-		if (arterialIOs[i].dcOn) {
-			arterialIOs[i].alarm = HAL_GPIO_ReadPin(arterialIOs[i].AlarmPort,
-					arterialIOs[i].AlarmPin) == GPIO_PIN_SET;
-			if (arterialIOs[i].alarm == false) {
+		set_dc_button_alarm_color(i);
 
-				if (arterial[i].dcAlarmColor == ORANGE_C)
-					arterial[i].dcAlarmColor = YELLOW_C;
-				else if (arterial[i].dcAlarmColor == YELLOW_C)
-					arterial[i].dcAlarmColor = ORANGE_C;
-				else
-					arterial[i].dcAlarmColor = RED_C;
-			} else
-				arterial[i].dcAlarmColor = ORANGE_C;
-		} else
-			arterial[i].dcAlarmColor = GREY_C;
-		colorToNextionOn(arterial[i].dcObjName, arterial[i].dcAlarmColor);
-
-		if (arterialIOs[i].dcOn) {
-			if (arterial[i].cAlarm == true) {
-
+		if (arterial_io[i].dc_on) {
+			if (arterial[i].current_alarm == true) {
 				if (arterial[i].cAlarmColor == WHITE_C)
 					arterial[i].cAlarmColor = RED_C;
 				else if (arterial[i].cAlarmColor == RED_C)
@@ -657,17 +677,16 @@ void send_data_to_nextion_on_timeout() {
 			arterial[i].cAlarmColor = GREY_C;
 		set_color_to_nextion(arterial[i].cObj, arterial[i].cAlarmColor);
 
-		fontColor = arterialIOs[i].dcOn ? BLACK_C : WHITE_C;
+		fontColor = arterial_io[i].dc_on ? BLACK_C : WHITE_C;
 //		backColor = arterialIOs[i].dcOn ? WHITE_C : GREY_C;
 //		colorToNextion(arterial[i].cObj,
 //				arterial[i].cAlarm ? RED_C : backColor);
 		set_text_color_to_nextion(arterial[i].cObj,
-				arterial[i].cAlarm ? BLACK_C : fontColor);
+				arterial[i].current_alarm ? BLACK_C : fontColor);
 
 	}
 
 	update_dc_voltage_display(dcOn);
-
 
 	fontColor = rfOn ? BLACK_C : WHITE_C;
 	backColor = rfOn ? WHITE_C : GREY_C;
@@ -678,7 +697,8 @@ void send_data_to_nextion_on_timeout() {
 	}
 	floatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 1);
 	set_color_to_nextion(DOWNLINK_OBJECT_NAME, dlAlarm ? RED_C : backColor);
-	set_text_color_to_nextion(DOWNLINK_OBJECT_NAME, dlAlarm ? BLACK_C : fontColor);
+	set_text_color_to_nextion(DOWNLINK_OBJECT_NAME,
+			dlAlarm ? BLACK_C : fontColor);
 	intToNextion(dlBarObj, dlBar);
 	intToNextion(DC_BAR_OBJ, dc_bar);
 
@@ -746,15 +766,15 @@ uint8_t updateUART2Tx() {
 	uart2TxData[idx++] = 0x00;
 	uart2TxData[idx++] = dataSize;
 	dataSize = idx; // 6
-	uart2TxData[idx] = arterialIOs[0].dcOn | (arterialIOs[0].rfOn << 1);
-	uart2TxData[idx] |= arterialIOs[1].dcOn << 2 | arterialIOs[1].rfOn << 3;
-	uart2TxData[idx] |= arterialIOs[2].dcOn << 4 | arterialIOs[2].rfOn << 5;
-	uart2TxData[idx] |= arterialIOs[3].dcOn << 6 | arterialIOs[3].rfOn << 7;
+	uart2TxData[idx] = arterial_io[0].dc_on | (arterial_io[0].rfOn << 1);
+	uart2TxData[idx] |= arterial_io[1].dc_on << 2 | arterial_io[1].rfOn << 3;
+	uart2TxData[idx] |= arterial_io[2].dc_on << 4 | arterial_io[2].rfOn << 5;
+	uart2TxData[idx] |= arterial_io[3].dc_on << 6 | arterial_io[3].rfOn << 7;
 	idx++;
-	uart2TxData[idx++] = adcValues[ART1_CURRENT_CH];
-	uart2TxData[idx++] = adcValues[ART1_CURRENT_CH] >> 8;
-	uart2TxData[idx++] = adcValues[ART2_CURRENT_CH];
-	uart2TxData[idx++] = adcValues[ART2_CURRENT_CH] >> 8;
+	uart2TxData[idx++] = adcValues[ART1_CURRENT_CHANNEL];
+	uart2TxData[idx++] = adcValues[ART1_CURRENT_CHANNEL] >> 8;
+	uart2TxData[idx++] = adcValues[ART2_CURRENT_CHANNEL];
+	uart2TxData[idx++] = adcValues[ART2_CURRENT_CHANNEL] >> 8;
 	uart2TxData[idx++] = adcValues[ART3_CURRENT_CH];
 	uart2TxData[idx++] = adcValues[ART3_CURRENT_CH] >> 8;
 	uart2TxData[idx++] = adcValues[ART4_CURRENT_CH];
@@ -939,7 +959,7 @@ int main(void) {
 	MX_I2C2_Init();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
-//  MX_IWDG_Init();
+	MX_IWDG_Init();
 	/* USER CODE BEGIN 2 */
 
 	// Initialize necessary peripherals and configurations
@@ -968,7 +988,7 @@ int main(void) {
 	startTimer2();
 	startTimer3();
 
-//	HAL_IWDG_Refresh(&hiwdg);
+	HAL_IWDG_Refresh(&hiwdg);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -983,7 +1003,7 @@ int main(void) {
 		updateAlarm();
 		enableKeepAliveLed();
 		send_data_to_nextion_on_timeout();
-//		HAL_IWDG_Refresh(&hiwdg);
+		HAL_IWDG_Refresh(&hiwdg);
 
 	}
 	/* USER CODE END WHILE */
