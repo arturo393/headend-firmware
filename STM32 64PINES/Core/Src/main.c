@@ -159,7 +159,6 @@ static void MX_IWDG_Init(void);
 #define CURRENT_MIN_VALUE_old 0.2
 #define CURRENT_MAX_VALUE_old 1.22
 
-
 #define ADC_DOWNLINK_MAX 1634
 #define DOWNLINK_LEVEL_MAX 11.7
 #define ADC_DOWNLINK_MIN 1014
@@ -194,12 +193,12 @@ static void MX_IWDG_Init(void);
 #define ADC_WINDOW_SIZE 50
 
 typedef enum {
-	VIN_12V, VIN_24V, VIN_48V, VIN_UNKNOW
+	VIN_0V, VIN_12V, VIN_24V, VIN_48V, VIN_UNKNOW
 } VOLTAGE_STATE_T;
 
 int uplinkLevel;
 float downlinkLevel;
-uint8_t dcBar;
+uint8_t dc_bar;
 uint8_t dlBar;
 char dlBarObj[4];
 bool vAlarm = false;
@@ -208,12 +207,12 @@ bool ulAlarm = false;
 GPIO_PinState pinDcAlarm;
 GPIO_PinState pinDownlinkAlarm;
 char dcValueObjName[4];
-char dc12vObjt[4];
-char dc24vObjt[4];
-char dc48vObjt[4];
+char dc_12v_object[4];
+char dc_24v_object[4];
+char dc_48v_object[4];
 char dcBarObjt[4];
-VOLTAGE_STATE_T dcState;
-float dcValue;
+VOLTAGE_STATE_T dc_voltage_state;
+float dc_voltage_value;
 
 typedef enum {
 	ART1, ART2, ART3, ART4, ARTERIAL_NUMBER
@@ -226,7 +225,7 @@ typedef enum NEXTION_UART_INDEX {
 typedef enum {
 	ART1_CURRENT_CH,
 	ART4_CURRENT_CH,
-	VOLTAGE_CH,
+	VOLTAGE_CHANNEL,
 	DOWNLINK_LVL_CH,
 	UPLINK_LVL_CH,
 	ART3_CURRENT_CH,
@@ -316,7 +315,7 @@ void floatToNextion(char *obj, float num, int dp) {
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
 
-void colorToNextion(char *obj, uint32_t color) {
+void set_color_to_nextion(char *obj, uint32_t color) {
 	// convert to the integer
 	uint8_t len = 0;
 	uint8_t buffer[30] = { 0 };
@@ -343,7 +342,7 @@ void colorToNextionOff(char *obj, uint32_t color) {
 	HAL_UART_Transmit(&huart1, Cmd_End, sizeof(Cmd_End), HAL_MAX_DELAY);
 }
 
-void textColorToNextion(char *obj, uint32_t color) {
+void set_text_color_to_nextion(char *obj, uint32_t color) {
 	// convert to the integer
 	uint8_t len = 0;
 	uint8_t buffer[30] = { 0 };
@@ -355,9 +354,9 @@ void textColorToNextion(char *obj, uint32_t color) {
 void sendArterialToNextion(Arterial arterial) {
 	floatToNextion(arterial.cObj, arterial.current, 2);
 	if (arterial.cAlarm)
-		colorToNextion(arterial.cObj, RED_C);
+		set_color_to_nextion(arterial.cObj, RED_C);
 	else
-		colorToNextion(arterial.cObj, WHITE_C);
+		set_color_to_nextion(arterial.cObj, WHITE_C);
 
 }
 
@@ -465,9 +464,9 @@ void nextionObjectInit() {
 	arterial[ART4].dcObjID = ARTERIAL4_DC_ON_OBJECT_ID;
 	arterial[ART4].rfObjID = ARTERIAL4_RF_ON_OBJECT_ID;
 
-	snprintf(dc12vObjt, sizeof(dc12vObjt), "%s", DC_12V_OBJECT_NAME);
-	snprintf(dc24vObjt, sizeof(dc24vObjt), "%s", DC_24V_OBJECT_NAME);
-	snprintf(dc48vObjt, sizeof(dc48vObjt), "%s", DC_48V_OBJECT_NAME);
+	snprintf(dc_12v_object, sizeof(dc_12v_object), "%s", DC_12V_OBJECT_NAME);
+	snprintf(dc_24v_object, sizeof(dc_24v_object), "%s", DC_24V_OBJECT_NAME);
+	snprintf(dc_48v_object, sizeof(dc_48v_object), "%s", DC_48V_OBJECT_NAME);
 	snprintf(dlBarObj, sizeof(dlBarObj), "%s", DL_BAR_OBJ);
 }
 
@@ -548,19 +547,74 @@ void updateAlarm() {
 
 	pinDownlinkAlarm = HAL_GPIO_ReadPin(ALARM_VIN_GPIO_Port,
 	ALARM_VIN_Pin == GPIO_PIN_SET);	//ESTADO ALARM5 fuente >
-	vAlarm = adcValues[VOLTAGE_CH] > VOLT_THRESHOLD;
+	vAlarm = adcValues[VOLTAGE_CHANNEL] > VOLT_THRESHOLD;
 	dlAlarm = adcValues[DOWNLINK_LVL_CH] > DOWNLINK_THRESHOLD;
 	ulAlarm = adcValues[UPLINK_LVL_CH] > UPLINK_THRESHOLD;
 }
 
-void sendDataIfTimeout() {
+/*
+ * update_dc_voltage_display - Updates DC voltage display on Nextion with colors and text
+ *
+ * This function updates the DC voltage display on the Nextion based on the current DC
+ * state (on/off) and voltage level. It sets appropriate text colors, backgrounds, and
+ * highlights the voltage object corresponding to the current voltage level.
+ */
+void update_dc_voltage_display(bool is_dc_on)
+{
+	uint32_t font_color = is_dc_on ? BLACK_C : WHITE_C;
+	uint32_t background_color = is_dc_on ? WHITE_C : GREY_C;
+
+	/* Set text colors for all voltage objects */
+	set_text_color_to_nextion(dc_12v_object, font_color);
+	set_text_color_to_nextion(dc_24v_object, font_color);
+	set_text_color_to_nextion(dc_48v_object, font_color);
+
+	/* Set background colors and highlight the active voltage object */
+	switch (dc_voltage_state) {
+	case VIN_12V:
+		set_color_to_nextion(dc_12v_object, ORANGE_C);
+		set_color_to_nextion(dc_24v_object, background_color);
+		set_color_to_nextion(dc_48v_object, background_color);
+		break;
+	case VIN_24V:
+		set_color_to_nextion(dc_12v_object, background_color);
+		set_color_to_nextion(dc_24v_object, ORANGE_C);
+		set_color_to_nextion(dc_48v_object, background_color);
+		break;
+	case VIN_48V:
+		set_color_to_nextion(dc_12v_object, background_color);
+		set_color_to_nextion(dc_24v_object, background_color);
+		set_color_to_nextion(dc_48v_object, ORANGE_C);
+		break;
+	case VIN_0V:
+		set_color_to_nextion(dc_12v_object, background_color);
+		set_color_to_nextion(dc_24v_object, background_color);
+		set_color_to_nextion(dc_48v_object, background_color);
+		break;
+	default:  /* Handle other voltage states or unknown states */
+		set_color_to_nextion(dc_12v_object, background_color);
+		set_color_to_nextion(dc_24v_object, background_color);
+		set_color_to_nextion(dc_48v_object, background_color);
+		break;
+	}
+}
+/*
+ * send_data_to_nextion_on_timeout - Sends data to Nextion objects upon a timeout
+ *
+ * This function checks the sendDataOnTimeout flag and, if set, updates various
+ * Nextion objects with data related to:
+ * - arterial currents
+ * - DC/RF states
+ * - colors
+ * - downlink levels.
+ */
+void send_data_to_nextion_on_timeout() {
 
 	if (sendDataOnTimeout == false)
 		return;
 	sendDataOnTimeout = false;
 	bool dcOn = false;
 	bool rfOn = false;
-	uint32_t currFontColor;
 	uint32_t fontColor;
 	uint32_t backColor;
 
@@ -601,50 +655,32 @@ void sendDataIfTimeout() {
 				arterial[i].cAlarmColor = WHITE_C;
 		} else
 			arterial[i].cAlarmColor = GREY_C;
-		colorToNextion(arterial[i].cObj, arterial[i].cAlarmColor);
+		set_color_to_nextion(arterial[i].cObj, arterial[i].cAlarmColor);
 
 		fontColor = arterialIOs[i].dcOn ? BLACK_C : WHITE_C;
 //		backColor = arterialIOs[i].dcOn ? WHITE_C : GREY_C;
 //		colorToNextion(arterial[i].cObj,
 //				arterial[i].cAlarm ? RED_C : backColor);
-		textColorToNextion(arterial[i].cObj,
+		set_text_color_to_nextion(arterial[i].cObj,
 				arterial[i].cAlarm ? BLACK_C : fontColor);
 
 	}
 
-	fontColor = dcOn ? BLACK_C : WHITE_C;
-	backColor = dcOn ? WHITE_C : GREY_C;
-	textColorToNextion(dc12vObjt, fontColor);
-	textColorToNextion(dc24vObjt, fontColor);
-	textColorToNextion(dc48vObjt, fontColor);
+	update_dc_voltage_display(dcOn);
 
-	if (dcState == VIN_12V) {
-		colorToNextion(dc12vObjt, ORANGE_C);
-		colorToNextion(dc24vObjt, backColor);
-		colorToNextion(dc48vObjt, backColor);
-	} else if (dcState == VIN_24V) {
-		colorToNextion(dc12vObjt, backColor);
-		colorToNextion(dc24vObjt, ORANGE_C);
-		colorToNextion(dc48vObjt, backColor);
-
-	} else if (dcState == VIN_48V) {
-		colorToNextion(dc12vObjt, backColor);
-		colorToNextion(dc24vObjt, backColor);
-		colorToNextion(dc48vObjt, ORANGE_C);
-	}
 
 	fontColor = rfOn ? BLACK_C : WHITE_C;
 	backColor = rfOn ? WHITE_C : GREY_C;
 
-	if(downlinkLevel <= -99.9 ){
+	if (downlinkLevel <= -99.9) {
 		fontColor = RED_C;
 		backColor = RED_C;
 	}
 	floatToNextion(DOWNLINK_OBJECT_NAME, downlinkLevel, 1);
-	colorToNextion(DOWNLINK_OBJECT_NAME, dlAlarm ? RED_C : backColor);
-	textColorToNextion(DOWNLINK_OBJECT_NAME, dlAlarm ? BLACK_C : fontColor);
+	set_color_to_nextion(DOWNLINK_OBJECT_NAME, dlAlarm ? RED_C : backColor);
+	set_text_color_to_nextion(DOWNLINK_OBJECT_NAME, dlAlarm ? BLACK_C : fontColor);
 	intToNextion(dlBarObj, dlBar);
-	intToNextion(DC_BAR_OBJ, dcBar);
+	intToNextion(DC_BAR_OBJ, dc_bar);
 
 }
 
@@ -652,9 +688,8 @@ void updateDlValues() {
 	downlinkLevel = arduino_map(adcValues[DOWNLINK_LVL_CH],
 	ADC_DOWNLINK_MIN,
 	ADC_DOWNLINK_MAX, DOWNLINK_LEVEL_MIN, DOWNLINK_LEVEL_MAX);
-	if(adcValues[DOWNLINK_LVL_CH] < 380)
+	if (adcValues[DOWNLINK_LVL_CH] < 380)
 		downlinkLevel = -99.9;
-
 
 	dlBar = arduino_map(adcValues[DOWNLINK_LVL_CH], 370, 1700, 0, 100);
 	if ((int) dlBar < 0)
@@ -664,26 +699,40 @@ void updateDlValues() {
 		dlBar = 100;
 }
 
-void updateDcValues() {
+/*
+ * update_dc_voltage_values - Reads ADC value and updates DC state, bar level, and voltage
+ *
+ * This function reads the ADC value from the specified channel, calculates and
+ * updates the DC voltage value, state, and bar level for the Nextion display.
+ */
+void update_dc_voltage_values() {
 
-	dcValue = arduino_map(adcValues[VOLTAGE_CH],
+	/* Read ADC value */
+	uint16_t adc_value = adcValues[VOLTAGE_CHANNEL];
+
+	/* Calculate DC voltage */
+	dc_voltage_value = arduino_map(adc_value,
 	ADC_MIN_VALUE, ADC_MAX_VALUE, VOLTAGE_MIN, VOLTAGE_MAX);
 
-	dcState =
-			(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_5V
-					&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_18V) ?
-					VIN_12V :
-			(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_18V
-					&& adcValues[VOLTAGE_CH] < VOLTAGE_THRESHOLD_36V) ?
-					VIN_24V :
-			(adcValues[VOLTAGE_CH] >= VOLTAGE_THRESHOLD_36V) ?
-					VIN_48V : VIN_UNKNOW;
+	/* Determine DC state based on voltage ranges */
+	if (adc_value < VOLTAGE_THRESHOLD_5V)
+		dc_voltage_state = VIN_0V;
+	else if (adc_value >= VOLTAGE_THRESHOLD_5V
+			&& adc_value < VOLTAGE_THRESHOLD_18V)
+		dc_voltage_state = VIN_12V;
+	else if (adc_value >= VOLTAGE_THRESHOLD_18V
+			&& adc_value < VOLTAGE_THRESHOLD_36V)
+		dc_voltage_state = VIN_24V;
+	else if (adc_value >= VOLTAGE_THRESHOLD_36V)
+		dc_voltage_state = VIN_48V;
+	else
+		dc_voltage_state = VIN_UNKNOW;
 
-	dcBar = arduino_map(dcValue, 0, 50, 0, 100);
-	if ((int) dcBar < 0)
-		dcBar = 0;
-	if ((int) dcBar > 100)
-		dcBar = 100;
+	dc_bar = arduino_map(dc_voltage_value, 0, 50, 0, 100);
+	if ((int) dc_bar < 0)
+		dc_bar = 0;
+	if ((int) dc_bar > 100)
+		dc_bar = 100;
 }
 
 uint8_t dataSize = 0;
@@ -710,8 +759,8 @@ uint8_t updateUART2Tx() {
 	uart2TxData[idx++] = adcValues[ART3_CURRENT_CH] >> 8;
 	uart2TxData[idx++] = adcValues[ART4_CURRENT_CH];
 	uart2TxData[idx++] = adcValues[ART4_CURRENT_CH] >> 8;
-	uart2TxData[idx++] = adcValues[VOLTAGE_CH];
-	uart2TxData[idx++] = adcValues[VOLTAGE_CH] >> 8;
+	uart2TxData[idx++] = adcValues[VOLTAGE_CHANNEL];
+	uart2TxData[idx++] = adcValues[VOLTAGE_CHANNEL] >> 8;
 	uart2TxData[idx++] = adcValues[DOWNLINK_LVL_CH];
 	uart2TxData[idx++] = adcValues[DOWNLINK_LVL_CH] >> 8;
 	uart2TxData[idx++] = adcValues[UPLINK_LVL_CH];
@@ -855,45 +904,43 @@ void enableKeepAliveLed() {
 		HAL_GPIO_WritePin(KA_LED_GPIO_Port, KA_LED_Pin, GPIO_PIN_RESET);
 }
 
-
 uint32_t maxValue = 0;
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
-  /* USER CODE BEGIN 1 */
+ * @brief  The application entry point.
+ * @retval int
+ */
+int main(void) {
+	/* USER CODE BEGIN 1 */
 
-  /* USER CODE END 1 */
+	/* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+	/* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
 
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+	/* Configure the system clock */
+	SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+	/* USER CODE BEGIN SysInit */
 
-  /* USER CODE END SysInit */
+	/* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_ADC_Init();
-  MX_I2C2_Init();
-  MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
-  MX_IWDG_Init();
-  /* USER CODE BEGIN 2 */
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_DMA_Init();
+	MX_ADC_Init();
+	MX_I2C2_Init();
+	MX_USART1_UART_Init();
+	MX_USART2_UART_Init();
+//  MX_IWDG_Init();
+	/* USER CODE BEGIN 2 */
 
 	// Initialize necessary peripherals and configurations
 	HAL_StatusTypeDef res;
@@ -921,403 +968,380 @@ int main(void)
 	startTimer2();
 	startTimer3();
 
-	HAL_IWDG_Refresh(&hiwdg);
-  /* USER CODE END 2 */
+//	HAL_IWDG_Refresh(&hiwdg);
+	/* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
 	while (1) {
 
 		uartReinit(5000);
 		processRs485Cmd();
 		updateArterialValues();
 		updateDlValues();
-		updateDcValues();
+		update_dc_voltage_values();
 		updateAlarm();
 		enableKeepAliveLed();
-		sendDataIfTimeout();
+		send_data_to_nextion_on_timeout();
 //		HAL_IWDG_Refresh(&hiwdg);
 
 	}
-    /* USER CODE END WHILE */
+	/* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+	/* USER CODE BEGIN 3 */
 
-  /* USER CODE END 3 */
+	/* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+ * @brief System Clock Configuration
+ * @retval None
+ */
+void SystemClock_Config(void) {
+	RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
+	RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
+	RCC_PeriphCLKInitTypeDef PeriphClkInit = { 0 };
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI14
-                              |RCC_OSCILLATORTYPE_LSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.HSI14CalibrationValue = 16;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Initializes the RCC Oscillators according to the specified parameters
+	 * in the RCC_OscInitTypeDef structure.
+	 */
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI
+			| RCC_OSCILLATORTYPE_HSI14 | RCC_OSCILLATORTYPE_LSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.HSI14CalibrationValue = 16;
+	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+	/** Initializes the CPU, AHB and APB buses clocks
+	 */
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+			| RCC_CLOCKTYPE_PCLK1;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
+		Error_Handler();
+	}
+	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
+	PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
+	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+		Error_Handler();
+	}
 }
 
 /**
-  * @brief ADC Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC_Init(void)
-{
+ * @brief ADC Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC_Init(void) {
 
-  /* USER CODE BEGIN ADC_Init 0 */
+	/* USER CODE BEGIN ADC_Init 0 */
 
-  /* USER CODE END ADC_Init 0 */
+	/* USER CODE END ADC_Init 0 */
 
-  ADC_ChannelConfTypeDef sConfig = {0};
+	ADC_ChannelConfTypeDef sConfig = { 0 };
 
-  /* USER CODE BEGIN ADC_Init 1 */
+	/* USER CODE BEGIN ADC_Init 1 */
 
-  /* USER CODE END ADC_Init 1 */
+	/* USER CODE END ADC_Init 1 */
 
-  /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
-  hadc.Instance = ADC1;
-  hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
-  hadc.Init.EOCSelection = ADC_EOC_SEQ_CONV;
-  hadc.Init.LowPowerAutoWait = DISABLE;
-  hadc.Init.LowPowerAutoPowerOff = DISABLE;
-  hadc.Init.ContinuousConvMode = ENABLE;
-  hadc.Init.DiscontinuousConvMode = DISABLE;
-  hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc.Init.DMAContinuousRequests = ENABLE;
-  hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
-  if (HAL_ADC_Init(&hadc) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
+	 */
+	hadc.Instance = ADC1;
+	hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+	hadc.Init.Resolution = ADC_RESOLUTION_12B;
+	hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+	hadc.Init.ScanConvMode = ADC_SCAN_DIRECTION_FORWARD;
+	hadc.Init.EOCSelection = ADC_EOC_SEQ_CONV;
+	hadc.Init.LowPowerAutoWait = DISABLE;
+	hadc.Init.LowPowerAutoPowerOff = DISABLE;
+	hadc.Init.ContinuousConvMode = ENABLE;
+	hadc.Init.DiscontinuousConvMode = DISABLE;
+	hadc.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+	hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+	hadc.Init.DMAContinuousRequests = ENABLE;
+	hadc.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+	if (HAL_ADC_Init(&hadc) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
-  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_0;
+	sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
+	sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_3;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_3;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_4;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_4;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_5;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_5;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_6;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_6;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_10;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_10;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_11;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ADC_Init 2 */
+	/** Configure for the selected ADC regular channel to be converted.
+	 */
+	sConfig.Channel = ADC_CHANNEL_11;
+	if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN ADC_Init 2 */
 
-  /* USER CODE END ADC_Init 2 */
+	/* USER CODE END ADC_Init 2 */
 
 }
 
 /**
-  * @brief I2C2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C2_Init(void)
-{
+ * @brief I2C2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_I2C2_Init(void) {
 
-  /* USER CODE BEGIN I2C2_Init 0 */
+	/* USER CODE BEGIN I2C2_Init 0 */
 
-  /* USER CODE END I2C2_Init 0 */
+	/* USER CODE END I2C2_Init 0 */
 
-  /* USER CODE BEGIN I2C2_Init 1 */
+	/* USER CODE BEGIN I2C2_Init 1 */
 
-  /* USER CODE END I2C2_Init 1 */
-  hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x2000090E;
-  hi2c2.Init.OwnAddress1 = 0;
-  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c2.Init.OwnAddress2 = 0;
-  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/* USER CODE END I2C2_Init 1 */
+	hi2c2.Instance = I2C2;
+	hi2c2.Init.Timing = 0x2000090E;
+	hi2c2.Init.OwnAddress1 = 0;
+	hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+	hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+	hi2c2.Init.OwnAddress2 = 0;
+	hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+	hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+	hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+	if (HAL_I2C_Init(&hi2c2) != HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Configure Analogue filter
+	 */
+	if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE)
+			!= HAL_OK) {
+		Error_Handler();
+	}
 
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C2_Init 2 */
+	/** Configure Digital filter
+	 */
+	if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN I2C2_Init 2 */
 
-  /* USER CODE END I2C2_Init 2 */
+	/* USER CODE END I2C2_Init 2 */
 
 }
 
 /**
-  * @brief IWDG Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_IWDG_Init(void)
-{
+ * @brief IWDG Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_IWDG_Init(void) {
 
-  /* USER CODE BEGIN IWDG_Init 0 */
+	/* USER CODE BEGIN IWDG_Init 0 */
 
-  /* USER CODE END IWDG_Init 0 */
+	/* USER CODE END IWDG_Init 0 */
 
-  /* USER CODE BEGIN IWDG_Init 1 */
+	/* USER CODE BEGIN IWDG_Init 1 */
 
-  /* USER CODE END IWDG_Init 1 */
-  hiwdg.Instance = IWDG;
-  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
-  hiwdg.Init.Window = 4095;
-  hiwdg.Init.Reload = 1250;
-  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN IWDG_Init 2 */
+	/* USER CODE END IWDG_Init 1 */
+	hiwdg.Instance = IWDG;
+	hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+	hiwdg.Init.Window = 4095;
+	hiwdg.Init.Reload = 1250;
+	if (HAL_IWDG_Init(&hiwdg) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN IWDG_Init 2 */
 
-  /* USER CODE END IWDG_Init 2 */
+	/* USER CODE END IWDG_Init 2 */
 
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
+ * @brief USART1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART1_UART_Init(void) {
 
-  /* USER CODE BEGIN USART1_Init 0 */
+	/* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END USART1_Init 0 */
+	/* USER CODE END USART1_Init 0 */
 
-  /* USER CODE BEGIN USART1_Init 1 */
+	/* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
+	/* USER CODE END USART1_Init 1 */
+	huart1.Instance = USART1;
+	huart1.Init.BaudRate = 115200;
+	huart1.Init.WordLength = UART_WORDLENGTH_8B;
+	huart1.Init.StopBits = UART_STOPBITS_1;
+	huart1.Init.Parity = UART_PARITY_NONE;
+	huart1.Init.Mode = UART_MODE_TX_RX;
+	huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+	huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+	huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+	if (HAL_UART_Init(&huart1) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END USART1_Init 2 */
+	/* USER CODE END USART1_Init 2 */
 
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
+ * @brief USART2 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART2_UART_Init(void) {
 
-  /* USER CODE BEGIN USART2_Init 0 */
+	/* USER CODE BEGIN USART2_Init 0 */
 
-  /* USER CODE END USART2_Init 0 */
+	/* USER CODE END USART2_Init 0 */
 
-  /* USER CODE BEGIN USART2_Init 1 */
+	/* USER CODE BEGIN USART2_Init 1 */
 
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
+	/* USER CODE END USART2_Init 1 */
+	huart2.Instance = USART2;
+	huart2.Init.BaudRate = 115200;
+	huart2.Init.WordLength = UART_WORDLENGTH_8B;
+	huart2.Init.StopBits = UART_STOPBITS_1;
+	huart2.Init.Parity = UART_PARITY_NONE;
+	huart2.Init.Mode = UART_MODE_TX_RX;
+	huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+	huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+	huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+	if (HAL_UART_Init(&huart2) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN USART2_Init 2 */
 
-  /* USER CODE END USART2_Init 2 */
+	/* USER CODE END USART2_Init 2 */
 
 }
 
 /**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
 
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA1_CLK_ENABLE();
 
-  /* DMA interrupt init */
-  /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+	/* DMA interrupt init */
+	/* DMA1_Channel1_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPIO_Init(void) {
+	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
+	/* USER CODE BEGIN MX_GPIO_Init_1 */
+	/* USER CODE END MX_GPIO_Init_1 */
 
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
+	/* GPIO Ports Clock Enable */
+	__HAL_RCC_GPIOF_CLK_ENABLE();
+	__HAL_RCC_GPIOC_CLK_ENABLE();
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	__HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, DE_Pin|DC_A1_Pin|DC_A2_Pin|DC_A3_Pin
-                          |DC_A4_Pin, GPIO_PIN_RESET);
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOA,
+	DE_Pin | DC_A1_Pin | DC_A2_Pin | DC_A3_Pin | DC_A4_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, RF_A4_Pin|RF_A3_Pin|RF_A2_Pin|KA_LED_Pin
-                          |NEXTION_LED_Pin|DATA_OK_Pin|ADC_CPLT_Pin|RF_A1_Pin, GPIO_PIN_RESET);
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOB,
+			RF_A4_Pin | RF_A3_Pin | RF_A2_Pin | KA_LED_Pin | NEXTION_LED_Pin
+					| DATA_OK_Pin | ADC_CPLT_Pin | RF_A1_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : DE_Pin DC_A1_Pin DC_A2_Pin DC_A3_Pin
-                           DC_A4_Pin */
-  GPIO_InitStruct.Pin = DE_Pin|DC_A1_Pin|DC_A2_Pin|DC_A3_Pin
-                          |DC_A4_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+	/*Configure GPIO pins : DE_Pin DC_A1_Pin DC_A2_Pin DC_A3_Pin
+	 DC_A4_Pin */
+	GPIO_InitStruct.Pin =
+	DE_Pin | DC_A1_Pin | DC_A2_Pin | DC_A3_Pin | DC_A4_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RF_A4_Pin RF_A3_Pin RF_A2_Pin KA_LED_Pin
-                           NEXTION_LED_Pin DATA_OK_Pin ADC_CPLT_Pin RF_A1_Pin */
-  GPIO_InitStruct.Pin = RF_A4_Pin|RF_A3_Pin|RF_A2_Pin|KA_LED_Pin
-                          |NEXTION_LED_Pin|DATA_OK_Pin|ADC_CPLT_Pin|RF_A1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+	/*Configure GPIO pins : RF_A4_Pin RF_A3_Pin RF_A2_Pin KA_LED_Pin
+	 NEXTION_LED_Pin DATA_OK_Pin ADC_CPLT_Pin RF_A1_Pin */
+	GPIO_InitStruct.Pin = RF_A4_Pin | RF_A3_Pin | RF_A2_Pin | KA_LED_Pin
+			| NEXTION_LED_Pin | DATA_OK_Pin | ADC_CPLT_Pin | RF_A1_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB10 PB11 PB4 PB5
-                           PB6 PB7 PB8 PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_4|GPIO_PIN_5
-                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+	/*Configure GPIO pins : PB10 PB11 PB4 PB5
+	 PB6 PB7 PB8 PB9 */
+	GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_4 | GPIO_PIN_5
+			| GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ALARM_A4_Pin ALARM_A3_Pin ALARM_A2_Pin ALARM_A1_Pin
-                           ALARM_VIN_Pin */
-  GPIO_InitStruct.Pin = ALARM_A4_Pin|ALARM_A3_Pin|ALARM_A2_Pin|ALARM_A1_Pin
-                          |ALARM_VIN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+	/*Configure GPIO pins : ALARM_A4_Pin ALARM_A3_Pin ALARM_A2_Pin ALARM_A1_Pin
+	 ALARM_VIN_Pin */
+	GPIO_InitStruct.Pin = ALARM_A4_Pin | ALARM_A3_Pin | ALARM_A2_Pin
+			| ALARM_A1_Pin | ALARM_VIN_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
+	/* USER CODE BEGIN MX_GPIO_Init_2 */
+	/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -1325,17 +1349,16 @@ static void MX_GPIO_Init(void)
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
-  /* USER CODE BEGIN Error_Handler_Debug */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
+void Error_Handler(void) {
+	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1) {
 	}
-  /* USER CODE END Error_Handler_Debug */
+	/* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
