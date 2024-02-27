@@ -4,21 +4,15 @@
 **People:** Arturo Armando Veras Olivos  
 **Finalización:** 1
 
-[](https://drive.google.com/drive/folders/17ku6Cu4AZ0bmrrsLup_GOUawh5QAdTd1?usp=drive_link)
-
+[Carpeta](https://drive.google.com/drive/folders/17ku6Cu4AZ0bmrrsLup_GOUawh5QAdTd1?usp=drive_link)
 ## Versión 1.3
-
-https://drive.google.com/file/d/10mNuLc_gexjG9TbZrhT5K_cRUJCLGUcE/view?usp=drive_link
-
+[headend_20242602.hex ](https://drive.google.com/file/d/10mNuLc_gexjG9TbZrhT5K_cRUJCLGUcE/view?usp=drive_link)
 Parches para el funcionamiento de la pantalla:
 - Se cambian los colores de la pantalla
 - Se mejora las alertas DC
 - Se mejora el cambio de voltaje DC, se agrega el estado VIN_0V
-
 ## Versión 1.0
-
-https://drive.google.com/file/d/12gfd_B679W3XQUE-kX0PbZPM9oSn8pr-/view?usp=drive_link
-
+[headend_20242602.hex](https://drive.google.com/file/d/12gfd_B679W3XQUE-kX0PbZPM9oSn8pr-/view?usp=drive_link)
 - 4 sensores de corriente max4080, uno para cada arterial
 - 2 sensores de potencia, ~~uplink entrada~~ y downlink en la base. max4003
 - ~~Voltage DC de arterial. analog input 12V / 24V / 48V.~~
@@ -37,7 +31,6 @@ https://drive.google.com/file/d/12gfd_B679W3XQUE-kX0PbZPM9oSn8pr-/view?usp=drive
 - Alarma de corriente de 1 [A]
 
 ## Project tasks
-
 1. [Establish development environment](https://www.notion.so/Se-establece-el-entorno-de-desarrollo-96eb48fca0cc42a898ba74b9292d0b7a?pvs=21)
 2. [Configure readings for the 4 arterials on the screen](https://www.notion.so/Se-configura-lecturas-para-los-4-arteriales-en-la-pantalla-1f8588f9ba33483b860036284f232a89?pvs=21)
 3. [Review requirements](https://www.notion.so/Revisar-requerimientos-0f4f89ef8060453f8164d90daa271e7b?pvs=21)
