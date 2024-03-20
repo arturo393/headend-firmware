@@ -191,6 +191,7 @@ static void MX_IWDG_Init(void);
 #define GREY_C 21162
 #define BLACK_C 0
 
+#define SEND_DATA_TO_NEXION_TIMEOUT 100
 #define ADC_WINDOW_SIZE 50
 
 typedef enum {
@@ -214,7 +215,9 @@ char dc_48v_object[4];
 char dcBarObjt[4];
 VOLTAGE_STATE_T dc_voltage_state;
 float dc_voltage_value;
-
+bool arterial_change[10] = { false };
+uint8_t arterial_change_times = 0;
+bool arterial_update = false;
 typedef enum {
 	ART1, ART2, ART3, ART4, ARTERIAL_NUMBER
 } ARTERIAL_NUM_T;
@@ -295,6 +298,46 @@ uint16_t adcReadings[ADC_CHANNELS][ADC_WINDOW_SIZE] = { 0 };
 uint16_t adcMA[ADC_CHANNELS];
 uint32_t adcSum[ADC_CHANNELS] = { 0 };
 
+void set_arterial_output(ArterialIO arterial_io) {
+	uint8_t pulse_width = 0;
+	uint16_t pulse_times = 0;
+	switch (dc_voltage_state) {
+
+	case VIN_0V:
+		pulse_width = 0;
+		pulse_times = 0;
+		break;
+	case VIN_12V:
+		pulse_width = 37;
+		pulse_times = 60;
+		break;
+	case VIN_24V:
+		pulse_width = 30;
+		pulse_times = 1300;
+		break;
+	case VIN_48V:
+		pulse_width = 29;
+		pulse_times = 1000;
+		break;
+	default:
+		pulse_width = 0;
+		pulse_times = 0;
+		break;
+	}
+
+	for (uint16_t i = 0; i < pulse_times; i++) {
+		for (uint8_t j = 0; j < 100; j++) {
+			if (j < pulse_width)
+				HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin,
+						GPIO_PIN_SET);
+			else
+				HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin,
+						GPIO_PIN_RESET);
+		}
+	}
+	HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin, GPIO_PIN_SET);
+}
+
 void intToNextion(char *obj, int32_t num) {
 	uint8_t buffer[30] = { 0 };
 	int len = sprintf((char*) buffer, "%s.val=%ld", obj, num);
@@ -372,18 +415,25 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			for (uint8_t i = 0; i < ARTERIAL_NUMBER; i++) {
 				if (uartBuffer[CMD] == arterial[i].dcObjID) {
 					arterial_io[i].dc_on = uartBuffer[VALUE];
-					HAL_GPIO_WritePin(arterial_io[i].dcPort,
-							arterial_io[i].dcPin, arterial_io[i].dc_on);
+					if (arterial_io[i].dc_on)
+						set_arterial_output(arterial_io[i]);
+					else
+						HAL_GPIO_WritePin(arterial_io[i].dcPort,
+								arterial_io[i].dcPin, GPIO_PIN_RESET);
 
-				}
-
-				else if (uartBuffer[CMD] == arterial[i].rfObjID) {
+//					if (arterial_io[i].dc_on)
+//						set_arterial_output(arterial_io[i]);
+//					else
+//						HAL_GPIO_WritePin(arterial_io[i].dcPort, arterial_io[i].dcPin,
+//								GPIO_PIN_RESET);
+				} else if (uartBuffer[CMD] == arterial[i].rfObjID) {
 					arterial_io[i].rfOn = uartBuffer[VALUE];
 					HAL_GPIO_WritePin(arterial_io[i].rfPort,
 							arterial_io[i].rfPin, arterial_io[i].rfOn);
+					//sendDataOnTimeout = true;
 				}
 			}
-			sendDataOnTimeout = true;
+
 			isCmdOk = false;
 
 		} else
@@ -628,27 +678,14 @@ void set_dc_button_alarm_color(uint8_t arterial_index) {
 	else if (arterial[arterial_index].dc_alarm_color == RED_C)
 		arterial[arterial_index].dc_alarm_color = GREEN_ON_C;
 	else
-		arterial[arterial_index].dc_alarm_color = RED_C;
+		arterial[arterial_index].dc_alarm_color = GREEN_ON_C;
 
 	set_on_color_to_nextion(arterial[arterial_index].dc_object_name,
 			arterial[arterial_index].dc_alarm_color);
 }
 
-/*
- * send_data_to_nextion_on_timeout - Sends data to Nextion objects upon a timeout
- *
- * This function checks the sendDataOnTimeout flag and, if set, updates various
- * Nextion objects with data related to:
- * - arterial currents
- * - DC/RF states
- * - colors
- * - downlink levels.
- */
 void send_data_to_nextion_on_timeout() {
 
-	if (sendDataOnTimeout == false)
-		return;
-	sendDataOnTimeout = false;
 	bool dcOn = false;
 	bool rfOn = false;
 	uint32_t fontColor;
@@ -810,6 +847,7 @@ void updateArterialValues() {
 			arterial[i].cBar = 0;
 		if (adcValues[adcIndex] < 1)
 			arterial[i].current = 0;
+
 	}
 }
 
@@ -877,7 +915,7 @@ void configureTimer3() {
 	NVIC_EnableIRQ(TIM3_IRQn); // Enable the interrupt
 }
 uint32_t startTicks = 0;
-
+uint32_t sendDataToNextionTicks = 0;
 void processRs485Cmd() {
 
 	uart2TxIndex = updateUART2Tx();
@@ -983,12 +1021,12 @@ int main(void) {
 	nextionObjectInit();
 	initArterialIOs();
 
-	configureTimer2();
+//	configureTimer2();
 	configureTimer3();
-	startTimer2();
+//	startTimer2();
 	startTimer3();
 
-	HAL_IWDG_Refresh(&hiwdg);
+	//HAL_IWDG_Refresh(&hiwdg);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -997,12 +1035,21 @@ int main(void) {
 
 		uartReinit(5000);
 		processRs485Cmd();
+
+		enableKeepAliveLed();
+
+		updateAlarm();
+
 		updateArterialValues();
 		updateDlValues();
 		update_dc_voltage_values();
-		updateAlarm();
-		enableKeepAliveLed();
-		send_data_to_nextion_on_timeout();
+
+		if (((HAL_GetTick() - sendDataToNextionTicks)
+				> SEND_DATA_TO_NEXION_TIMEOUT)) {
+			sendDataToNextionTicks = HAL_GetTick();
+			send_data_to_nextion_on_timeout();
+		}
+
 		HAL_IWDG_Refresh(&hiwdg);
 
 	}
@@ -1032,7 +1079,10 @@ void SystemClock_Config(void) {
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 	RCC_OscInitStruct.HSI14CalibrationValue = 16;
 	RCC_OscInitStruct.LSIState = RCC_LSI_ON;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+	RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
 	}
@@ -1041,11 +1091,11 @@ void SystemClock_Config(void) {
 	 */
 	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
 			| RCC_CLOCKTYPE_PCLK1;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
 		Error_Handler();
 	}
 	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1;
@@ -1163,7 +1213,7 @@ static void MX_I2C2_Init(void) {
 
 	/* USER CODE END I2C2_Init 1 */
 	hi2c2.Instance = I2C2;
-	hi2c2.Init.Timing = 0x2000090E;
+	hi2c2.Init.Timing = 0x20303E5D;
 	hi2c2.Init.OwnAddress1 = 0;
 	hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
 	hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -1346,8 +1396,9 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pins : PB10 PB11 PB4 PB5
 	 PB6 PB7 PB8 PB9 */
-	GPIO_InitStruct.Pin = GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_4 | GPIO_PIN_5
-			| GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
+	GPIO_InitStruct.Pin =
+	GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6
+			| GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
