@@ -298,35 +298,41 @@ uint16_t adcReadings[ADC_CHANNELS][ADC_WINDOW_SIZE] = { 0 };
 uint16_t adcMA[ADC_CHANNELS];
 uint32_t adcSum[ADC_CHANNELS] = { 0 };
 
-void set_arterial_output(ArterialIO arterial_io) {
+void set_arterial_output_on(ArterialIO arterial_io) {
 	uint8_t pulse_width = 0;
 	uint16_t pulse_times = 0;
+	uint16_t pulse_period = 0;
 	switch (dc_voltage_state) {
 
 	case VIN_0V:
 		pulse_width = 0;
 		pulse_times = 0;
+		pulse_period = 0;
 		break;
 	case VIN_12V:
-		pulse_width = 37;
-		pulse_times = 60;
+		pulse_width = 39;
+		pulse_times = 100;
+		pulse_period = 100;
 		break;
 	case VIN_24V:
-		pulse_width = 30;
-		pulse_times = 1300;
+		pulse_width = 15;
+		pulse_times = 45;
+		pulse_period = 50;
 		break;
 	case VIN_48V:
-		pulse_width = 29;
-		pulse_times = 1000;
+		pulse_width = 10;
+		pulse_times = 100;
+		pulse_period = 33;
 		break;
 	default:
 		pulse_width = 0;
 		pulse_times = 0;
+		pulse_period = 0;
 		break;
 	}
 
 	for (uint16_t i = 0; i < pulse_times; i++) {
-		for (uint8_t j = 0; j < 100; j++) {
+		for (uint8_t j = 0; j < pulse_period; j++) {
 			if (j < pulse_width)
 				HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin,
 						GPIO_PIN_SET);
@@ -336,6 +342,63 @@ void set_arterial_output(ArterialIO arterial_io) {
 		}
 	}
 	HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin, GPIO_PIN_SET);
+}
+
+void set_arterial_output_off(ArterialIO arterial_io) {
+	uint8_t pulse_width = 0;
+	uint16_t pulse_times = 0;
+	uint16_t pulse_period = 0;
+	uint8_t count = 0;
+	uint8_t set = 0;
+	switch (dc_voltage_state) {
+
+	case VIN_0V:
+		pulse_width = 0;
+		pulse_times = 0;
+		pulse_period = 0;
+		set = 0;
+		break;
+	case VIN_12V:
+		pulse_width = 0;
+		pulse_times = 0;
+		pulse_period = 0;
+		set = 0;
+		break;
+	case VIN_24V:
+		pulse_width = 29;
+		pulse_times = 37;
+		pulse_period = 100;
+		set = 20;
+		break;
+	case VIN_48V:
+		pulse_width = 29;
+		pulse_times = 40;
+		pulse_period = 100;
+		set = 30;
+		break;
+	default:
+		pulse_width = 0;
+		pulse_times = 0;
+		pulse_period = 0;
+		set = 0;
+		break;
+	}
+
+	for (uint16_t i = 0; i < pulse_times; i++) {
+		if(pulse_times > set){
+			count = 1;
+		}
+		for (uint8_t j = 0; j < pulse_period; j++) {
+			if (j < (pulse_width-count))
+				HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin,
+						GPIO_PIN_SET);
+			else
+				HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin,
+						GPIO_PIN_RESET);
+		}
+	}
+	HAL_GPIO_WritePin(arterial_io.dcPort, arterial_io.dcPin, GPIO_PIN_RESET);
+	count = 0;
 }
 
 void intToNextion(char *obj, int32_t num) {
@@ -407,7 +470,6 @@ void sendArterialToNextion(Arterial arterial) {
 HAL_StatusTypeDef rxHalRes;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-
 	if (huart == &huart1) {
 		if ((uartBuffer[START] == *START_RX_DATA)
 				&& (uartBuffer[END] == *END_RX_DATA)) {
@@ -416,34 +478,22 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				if (uartBuffer[CMD] == arterial[i].dcObjID) {
 					arterial_io[i].dc_on = uartBuffer[VALUE];
 					if (arterial_io[i].dc_on)
-						set_arterial_output(arterial_io[i]);
+						set_arterial_output_on(arterial_io[i]);
 					else
-						HAL_GPIO_WritePin(arterial_io[i].dcPort,
-								arterial_io[i].dcPin, GPIO_PIN_RESET);
-
-//					if (arterial_io[i].dc_on)
-//						set_arterial_output(arterial_io[i]);
-//					else
-//						HAL_GPIO_WritePin(arterial_io[i].dcPort, arterial_io[i].dcPin,
-//								GPIO_PIN_RESET);
+						set_arterial_output_off(arterial_io[i]);
 				} else if (uartBuffer[CMD] == arterial[i].rfObjID) {
 					arterial_io[i].rfOn = uartBuffer[VALUE];
 					HAL_GPIO_WritePin(arterial_io[i].rfPort,
 							arterial_io[i].rfPin, arterial_io[i].rfOn);
-					//sendDataOnTimeout = true;
 				}
 			}
-
 			isCmdOk = false;
-
 		} else
 			memset(uartBuffer, 0, 20);
 		HAL_UART_Receive_IT(&huart1, uartBuffer, BUTTON_DATA_SIZE);
-
 	}
 	if (huart == &huart2)
 		rxHalRes = HAL_UART_Receive_IT(&huart2, uart2RxData, QUERY_SIZE);
-
 }
 
 void NEXTION_SendQR(char *obj, char *str) {
@@ -607,13 +657,6 @@ void updateAlarm() {
 	ulAlarm = adcValues[UPLINK_LVL_CH] > UPLINK_THRESHOLD;
 }
 
-/*
- * update_dc_voltage_display - Updates DC voltage display on Nextion with colors and text
- *
- * This function updates the DC voltage display on the Nextion based on the current DC
- * state (on/off) and voltage level. It sets appropriate text colors, backgrounds, and
- * highlights the voltage object corresponding to the current voltage level.
- */
 void update_dc_voltage_display(bool is_dc_on) {
 	uint32_t font_color = is_dc_on ? BLACK_C : WHITE_C;
 	uint32_t background_color = is_dc_on ? WHITE_C : GREY_C;
@@ -756,12 +799,6 @@ void updateDlValues() {
 		dlBar = 100;
 }
 
-/*
- * update_dc_voltage_values - Reads ADC value and updates DC state, bar level, and voltage
- *
- * This function reads the ADC value from the specified channel, calculates and
- * updates the DC voltage value, state, and bar level for the Nextion display.
- */
 void update_dc_voltage_values() {
 
 	/* Read ADC value */
