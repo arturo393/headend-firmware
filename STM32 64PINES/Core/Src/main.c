@@ -159,11 +159,11 @@ static void MX_IWDG_Init(void);
 #define CURRENT_MIN_VALUE_old 0.2
 #define CURRENT_MAX_VALUE_old 1.22
 
-#define ADC_DOWNLINK_MAX 1634
-#define DOWNLINK_LEVEL_MAX 11.7
-#define ADC_DOWNLINK_MIN 1014
-#define DOWNLINK_LEVEL_MIN -7.8
-#define DOWNLINK_THRESHOLD 1600
+#define ADC_DOWNLINK_MAX 1600
+#define DOWNLINK_LEVEL_MAX -1
+#define ADC_DOWNLINK_MIN 950
+#define DOWNLINK_LEVEL_MIN -21.6
+#define DOWNLINK_THRESHOLD 1660
 
 #define UPLINK_LEVEL_MIN -45
 #define UPLINK_LEVEL_MAX 0
@@ -227,12 +227,12 @@ typedef enum NEXTION_UART_INDEX {
 } NEXTION_INDEX_T;
 
 typedef enum {
+	ART4_CURRENT_CHANNEL,
 	ART1_CURRENT_CHANNEL,
-	ART4_CURRENT_CH,
 	VOLTAGE_CHANNEL,
 	DOWNLINK_LVL_CH,
 	UPLINK_LVL_CH,
-	ART3_CURRENT_CH,
+	ART3_CURRENT_CHANNEL,
 	ART2_CURRENT_CHANNEL,
 	ADC_CHANNELS
 } ADC_CHANNEL_T;
@@ -257,7 +257,7 @@ typedef struct ARTERIAL {
 
 // Create a lookup table to map arterial numbers to ADC indices
 const int arterialToADCIndex[ARTERIAL_NUMBER] = { ART1_CURRENT_CHANNEL,
-		ART2_CURRENT_CHANNEL, ART3_CURRENT_CH, ART4_CURRENT_CH };
+		ART2_CURRENT_CHANNEL, ART3_CURRENT_CHANNEL, ART4_CURRENT_CHANNEL };
 
 typedef struct {
 	GPIO_TypeDef *dcPort;
@@ -591,8 +591,8 @@ void initArterialIOs() {
 		} else if (i == ART2) {
 			arterial_io[i].dcPort = DC_A2_GPIO_Port;
 			arterial_io[i].dcPin = DC_A2_Pin;
-			arterial_io[i].rfPort = RF_A2_GPIO_Port;
-			arterial_io[i].rfPin = RF_A2_Pin;
+			arterial_io[i].rfPort = RF_A4_GPIO_Port;
+			arterial_io[i].rfPin = RF_A4_Pin;
 			arterial_io[i].alarm_port = ALARM_A2_GPIO_Port;
 			arterial_io[i].alarm_pin = ALARM_A2_Pin;
 		} else if (i == ART3) {
@@ -605,8 +605,8 @@ void initArterialIOs() {
 		} else if (i == ART4) {
 			arterial_io[i].dcPort = DC_A4_GPIO_Port;
 			arterial_io[i].dcPin = DC_A4_Pin;
-			arterial_io[i].rfPort = RF_A4_GPIO_Port;
-			arterial_io[i].rfPin = RF_A4_Pin;
+			arterial_io[i].rfPort = RF_A2_GPIO_Port;
+			arterial_io[i].rfPin = RF_A2_Pin;
 			arterial_io[i].alarm_port = ALARM_A4_GPIO_Port;
 			arterial_io[i].alarm_pin = ALARM_A4_Pin;
 		} else {
@@ -644,8 +644,8 @@ float arduino_map(uint16_t value, uint16_t in_min, uint16_t in_max,
 void updateAlarm() {
 	arterial[ART1].current_alarm = adcMA[ART1_CURRENT_CHANNEL] > ART1_THRESHOLD;
 	arterial[ART2].current_alarm = adcMA[ART2_CURRENT_CHANNEL] > ART2_THRESHOLD;
-	arterial[ART3].current_alarm = adcMA[ART3_CURRENT_CH] > ART3_THRESHOLD;
-	arterial[ART4].current_alarm = adcMA[ART4_CURRENT_CH] > ART4_THRESHOLD;
+	arterial[ART3].current_alarm = adcMA[ART3_CURRENT_CHANNEL] > ART3_THRESHOLD;
+	arterial[ART4].current_alarm = adcMA[ART4_CURRENT_CHANNEL] > ART4_THRESHOLD;
 	for (int i = 0; i < ARTERIAL_NUMBER; i++)
 		arterial_io[i].dc_alarm = HAL_GPIO_ReadPin(arterial_io[i].alarm_port,
 				arterial_io[i].alarm_pin) == GPIO_PIN_RESET;
@@ -849,10 +849,10 @@ uint8_t updateUART2Tx() {
 	uart2TxData[idx++] = adcValues[ART1_CURRENT_CHANNEL] >> 8;
 	uart2TxData[idx++] = adcValues[ART2_CURRENT_CHANNEL];
 	uart2TxData[idx++] = adcValues[ART2_CURRENT_CHANNEL] >> 8;
-	uart2TxData[idx++] = adcValues[ART3_CURRENT_CH];
-	uart2TxData[idx++] = adcValues[ART3_CURRENT_CH] >> 8;
-	uart2TxData[idx++] = adcValues[ART4_CURRENT_CH];
-	uart2TxData[idx++] = adcValues[ART4_CURRENT_CH] >> 8;
+	uart2TxData[idx++] = adcValues[ART3_CURRENT_CHANNEL];
+	uart2TxData[idx++] = adcValues[ART3_CURRENT_CHANNEL] >> 8;
+	uart2TxData[idx++] = adcValues[ART4_CURRENT_CHANNEL];
+	uart2TxData[idx++] = adcValues[ART4_CURRENT_CHANNEL] >> 8;
 	uart2TxData[idx++] = adcValues[VOLTAGE_CHANNEL];
 	uart2TxData[idx++] = adcValues[VOLTAGE_CHANNEL] >> 8;
 	uart2TxData[idx++] = adcValues[DOWNLINK_LVL_CH];
