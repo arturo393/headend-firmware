@@ -198,20 +198,11 @@ STM32 64PINES/Core/Src/sysmem.c
 STM32 64PINES/Core/Src/syscalls.c
 STM32 64PINES/Core/Src/stm32f0xx_it.c
 STM32 64PINES/Core/Src/stm32f0xx_hal_msp.c
-STM32 64PINES/.settings/stm32cubeide.project.prefs
-STM32 64PINES/.settings/language.settings.xml
-STM32 64PINES/.settings/com.st.stm32cube.ide.mcu.sfrview.prefs
-STM32 64PINES/STM32F051R8TX_FLASH.ld
-STM32 64PINES/STM32 64PINES Debug.launch
-STM32 64PINES/headend.launch
-STM32 64PINES/.mxproject
-STM32 64PINES/.cproject
 .idea/vcs.xml
 .idea/modules.xml
 .idea/headen-fw.iml
 STM32 64PINES/Core/Inc/stm32f0xx_it.h
 STM32 64PINES/Core/Inc/stm32f0xx_hal_conf.h
-/.settings/com.st.stm32cube.ide.mcu.sfrview.prefs
 /STM32 64PINES/Debug/headend.bin
 /STM32 64PINES/Debug/headend.hex
 /STM32 64PINES/Debug/Core/Src/module.cyclo
