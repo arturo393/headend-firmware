@@ -893,31 +893,28 @@ void TIM3_IRQHandler(void) {
 		TIM3->SR &= ~TIM_SR_UIF;  // Clear the update interrupt flag
 	}
 
-	for (int adcIdx = 0; adcIdx < ADC_CHANNELS; adcIdx++) {
-		// Subtract oldest value from the sum
+    for (int adcIdx = 0; adcIdx < ADC_CHANNELS; adcIdx++) {
+        // Subtract oldest value from the sum
+        adcSum[adcIdx] -= adcReadings[adcIdx][adcCounter[adcIdx]];
 
-		adcSum[adcIdx] -= adcReadings[adcIdx][adcCounter[adcIdx]];
-		// Subtraction overflow check
-		if ((int32_t) adcSum[adcIdx] < 0)
-			adcSum[adcIdx] = 0;
+        // Store the new value in the buffer
+        adcReadings[adcIdx][adcCounter[adcIdx]] = adcValues[adcIdx];
 
-		// Store the new value in the buffer
-		adcReadings[adcIdx][adcCounter[adcIdx]] = adcValues[adcIdx];
+        // Add new value to the sum
+        adcSum[adcIdx] += adcValues[adcIdx];
 
-		// Add new value to the sumh
-		adcSum[adcIdx] += adcValues[adcIdx];
+        // Calculate the average with floating-point precision
+        float average = (float)adcSum[adcIdx] / ADC_WINDOW_SIZE;
 
-		// Calculate and return the average
-		adcMA[adcIdx] = (adcSum[adcIdx] / ADC_WINDOW_SIZE);
+        // Round the average value to 2 decimal places
+        adcMA[adcIdx] = roundf(average * 100) / 100;
 
-		// Increment the current index and wrap around if necessary
-		adcCounter[adcIdx]++;
-		if (adcCounter[adcIdx] >= ADC_WINDOW_SIZE) {
-			adcCounter[adcIdx] = 0;
-		}
-
-	}
-
+        // Increment the current index and wrap around if necessary
+        adcCounter[adcIdx]++;
+        if (adcCounter[adcIdx] >= ADC_WINDOW_SIZE) {
+            adcCounter[adcIdx] = 0;
+        }
+    }
 }
 
 void startTimer3(void) {
