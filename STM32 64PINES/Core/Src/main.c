@@ -642,10 +642,10 @@ float arduino_map(uint16_t value, uint16_t in_min, uint16_t in_max,
 }
 
 void updateAlarm() {
-	arterial[ART1].current_alarm = adcMA[ART1_CURRENT_CHANNEL] > ART1_THRESHOLD;
-	arterial[ART2].current_alarm = adcMA[ART2_CURRENT_CHANNEL] > ART2_THRESHOLD;
-	arterial[ART3].current_alarm = adcMA[ART3_CURRENT_CHANNEL] > ART3_THRESHOLD;
-	arterial[ART4].current_alarm = adcMA[ART4_CURRENT_CHANNEL] > ART4_THRESHOLD;
+	arterial[ART1].current_alarm = adcValues[ART1_CURRENT_CHANNEL] > ART1_THRESHOLD;
+	arterial[ART2].current_alarm = adcValues[ART2_CURRENT_CHANNEL] > ART2_THRESHOLD;
+	arterial[ART3].current_alarm = adcValues[ART3_CURRENT_CHANNEL] > ART3_THRESHOLD;
+	arterial[ART4].current_alarm = adcValues[ART4_CURRENT_CHANNEL] > ART4_THRESHOLD;
 	for (int i = 0; i < ARTERIAL_NUMBER; i++)
 		arterial_io[i].dc_alarm = HAL_GPIO_ReadPin(arterial_io[i].alarm_port,
 				arterial_io[i].alarm_pin) == GPIO_PIN_RESET;
@@ -870,14 +870,14 @@ void updateArterialValues() {
 	for (int i = 0; i < ARTERIAL_NUMBER; i++) {
 
 		int adcIndex = arterialToADCIndex[i];
-		arterial[i].current = arduino_map(adcMA[adcIndex],
+		arterial[i].current = arduino_map(adcValues[adcIndex],
 		ADC_CURRENT_MIN_VALUE,
 		ADC_CURRENT_MAX_VALUE, CURRENT_MIN_VALUE, CURRENT_MAX_VALUE);
 		if (arterial[i].current > 1) {
 			uint8_t j = 0;
 			j++;
 		}
-		arterial[i].cBar = arduino_map(adcMA[adcIndex], 0, 1300, 0, 100);
+		arterial[i].cBar = arduino_map(adcValues[adcIndex], 0, 1300, 0, 100);
 		if ((int) arterial[i].cBar > 100)
 			arterial[i].cBar = 100;
 		if ((int) arterial[i].cBar < 0)
